@@ -34,11 +34,13 @@ import random
 import time
 import math
 from collections import deque, Counter
-from ultralytics import YOLO
+from core.detector import detector
+from core.config import DETECTION_CONFIG
 import os
 
-# Inicializar Pygame
-pygame.init()
+# Inicializar Pygame solo si se ejecuta directamente
+if __name__ == "__main__":
+    pygame.init()
 
 # ──────────────────────────────────────────────
 # Constantes globales de configuración
@@ -50,8 +52,12 @@ WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 """int: Alto de la ventana del juego en píxeles."""
 
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("🤟 Aprende Lenguaje de Señas - Juego Interactivo")
+if __name__ == "__main__":
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("🤟 Aprende Lenguaje de Señas - Juego Interactivo")
+else:
+    # Si viene del Scene Manager, usamos la superficie ya existente
+    screen = pygame.display.get_surface()
 
 COLORS = {
     'background': (20, 25, 40),
@@ -324,28 +330,8 @@ class SignLanguageGame:
                 en ninguna de las rutas buscadas (se imprime un mensaje
                 y se intenta cargar como fallback).
         """
-        # ── Cargar modelo YOLO ──
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        possible_paths = [
-            os.path.join(current_dir, "..", "..", "train", "best.pt"),
-            os.path.join(current_dir, "best.pt"),
-            r"C:\Users\Asus\Desktop\U\Semillero\train\best.pt"
-        ]
-
-        model_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                model_path = path
-                break
-
-        if model_path is None:
-            print("Error: No se encontró el archivo del modelo best.pt")
-            print(f"Buscado en: {possible_paths}")
-            model_path = "best.pt"
-
-        print(f"Cargando modelo desde: {model_path}")
-        self.model = YOLO(model_path)
-        print("Clases del modelo:", self.model.names)
+        print(f"Usando Detector Global Optimizado en: {detector.device}")
+        self.model = detector.model
 
         # ── Variables del juego ──
         self.vocales = ['A', 'E', 'I', 'O', 'U']
@@ -371,6 +357,8 @@ class SignLanguageGame:
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.frame_count = 0
+        self.last_detected = (None, None, 0.0, None)
 
         # ── Efectos visuales ──
         self.particles = ParticleEffect()
@@ -439,26 +427,7 @@ class SignLanguageGame:
         if not ret:
             return None, None, 0.0, None
 
-        # Inferencia YOLO
-        results = self.model(frame)[0]
-
-        detected_class = None
-        detected_conf = 0.0
-        detected_box = None
-
-        if hasattr(results, "boxes") and len(results.boxes):
-            try:
-                data = results.boxes.data.cpu().numpy()
-            except Exception:
-                data = results.boxes.data.numpy()
-
-            best_idx = int(np.argmax(data[:, 4]))
-            x1, y1, x2, y2, conf, cls = data[best_idx]
-            cls = int(cls)
-            detected_conf = float(conf)
-            detected_class = self.model.names[cls]
-            detected_box = (int(x1), int(y1), int(x2), int(y2))
-
+        detected_class, detected_conf, detected_box = detector.predict(frame)
         return frame, detected_class, detected_conf, detected_box
 
     def update_game_logic(self, detected_class, detected_conf):
@@ -642,6 +611,16 @@ class SignLanguageGame:
         instruction_rect = instruction_text.get_rect(centerx=200 + offset_x, y=120 + offset_y)
         surface.blit(instruction_text, instruction_rect)
 
+        # ── Mostrar nombre del niño ──
+        try:
+            from core.user_manager import user_manager
+            child_name = user_manager.get_user_name()
+        except ImportError:
+            child_name = "Invitado"
+            
+        name_text = font_medium.render(f"Jugador: {child_name}", True, COLORS['secondary'])
+        surface.blit(name_text, (20 + offset_x, main_panel_rect[1] + main_panel_rect[3] - 40))
+
         # ── Panel de estadísticas ──
         stats_panel_rect = (350 + offset_x, 150 + offset_y, 280, 250)
         draw_rounded_rect(surface, COLORS['secondary'], stats_panel_rect, 20)
@@ -721,8 +700,15 @@ class SignLanguageGame:
                         self.tiempo_inicio = time.time()
                         self.detections_deque.clear()
 
-            # Procesar frame de cámara
-            frame, detected_class, detected_conf, detected_box = self.process_frame()
+            # Procesar frame de cámara (Optimizado: Inferencia solo según configuración)
+            if self.frame_count % DETECTION_CONFIG['skip_frames'] == 0:
+                frame, detected_class, detected_conf, detected_box = self.process_frame()
+                self.last_detected = (frame, detected_class, detected_conf, detected_box)
+            else:
+                ret, frame = self.cap.read()
+                frame, detected_class, detected_conf, detected_box = self.last_detected
+            
+            self.frame_count += 1
 
             # Actualizar lógica del juego
             tiempo_restante = self.update_game_logic(detected_class, detected_conf)
@@ -742,7 +728,16 @@ class SignLanguageGame:
 
         # Limpieza de recursos
         self.cap.release()
-        pygame.quit()
+        
+        # Guardar progreso antes de salir
+        try:
+            from core.user_manager import user_manager
+            user_manager.update_stats(self.puntuacion)
+        except Exception as e:
+            print(f"Error al guardar progreso: {e}")
+
+        if __name__ == "__main__":
+            pygame.quit()
 
 
 if __name__ == "__main__":
