@@ -46,9 +46,27 @@ UI_CONFIG = {
     'border_thickness': 4
 }
 
-# Optimización del Detector
+# Optimización del Detector YOLO
 DETECTION_CONFIG = {
     'img_size': 320,
-    'skip_frames': 2, # Procesar 1 de cada 2 frames
+    'skip_frames': 2,
     'conf_threshold': 0.70
+}
+
+# Señas dinámicas (reconocidas por el modelo LSTM)
+DYNAMIC_SIGNS = ['hola', 'hola_mundo', 'buenos_dias']
+
+# Nombre visual de cada seña (vocales + dinámicas)
+SIGN_DISPLAY_NAMES = {
+    'A': 'A', 'E': 'E', 'I': 'I', 'O': 'O', 'U': 'U',
+    'hola': 'Hola',
+    'hola_mundo': 'Hola Mundo',
+    'buenos_dias': 'Buenos Días',
+}
+
+# Configuración del detector LSTM
+LSTM_CONFIG = {
+    'confidence_threshold': 0.65,
+    'min_votes': 2,       # mínimo de predicciones correctas para aprobar
+    'skip_frames': 2,     # procesar 1 de cada N frames con MediaPipe
 }
