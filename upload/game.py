@@ -35,7 +35,8 @@ import time
 import math
 from collections import deque, Counter
 from core.detector import detector
-from core.config import DETECTION_CONFIG
+from core.lstm_detector import lstm_detector
+from core.config import DETECTION_CONFIG, DYNAMIC_SIGNS, SIGN_DISPLAY_NAMES, LSTM_CONFIG
 import os
 
 # Inicializar Pygame solo si se ejecuta directamente
@@ -334,11 +335,11 @@ class SignLanguageGame:
         self.model = detector.model
 
         # ── Variables del juego ──
-        self.vocales = ['A', 'E', 'I', 'O', 'U']
+        self.all_signs = ['A', 'E', 'I', 'O', 'U', 'hola', 'hola_mundo', 'buenos_dias']
         self.puntuacion = 0
         self.mejor_puntuacion = 0
         self.tiempo_preparacion = 5.0
-        self.vocal_actual = random.choice(self.vocales)
+        self.vocal_actual = random.choice(self.all_signs)
         self.mensaje_feedback = ""
         self.color_feedback = COLORS['success']
         self.tiempo_inicio = time.time()
@@ -349,6 +350,12 @@ class SignLanguageGame:
         self.feedback_start = None
         self.feedback_duracion = 3.0
         self.CONF_THRESHOLD = 0.40
+
+        # ── LSTM ──
+        self._lstm_frame_count = 0
+        if self.vocal_actual in DYNAMIC_SIGNS:
+            lstm_detector.initialize()
+            lstm_detector.reset()
 
         # ── Cámara ──
         self.cap = cv2.VideoCapture(0)
@@ -450,8 +457,13 @@ class SignLanguageGame:
             float: Tiempo restante de preparación en segundos.
                 Retorna ``0.0`` si el tiempo ya expiró.
         """
-        # Añadir detección al buffer
-        if detected_class is not None and detected_conf >= self.CONF_THRESHOLD:
+        # Añadir detección al buffer (filtrar no_sena en señas dinámicas)
+        is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+        threshold = LSTM_CONFIG['confidence_threshold'] if is_dynamic else self.CONF_THRESHOLD
+
+        if (detected_class is not None
+                and detected_conf >= threshold
+                and detected_class != "no_sena"):
             self.detections_deque.append(detected_class)
         else:
             self.detections_deque.append(None)
@@ -459,16 +471,22 @@ class SignLanguageGame:
         # Temporizador
         tiempo_transcurrido = time.time() - self.tiempo_inicio
         tiempo_restante = max(0.0, self.tiempo_preparacion - tiempo_transcurrido)
+        sign_display = SIGN_DISPLAY_NAMES.get(self.vocal_actual, self.vocal_actual)
 
         # ── Lógica del juego ──
         if tiempo_restante > 0:
             self.evaluado = False
-            self.mensaje_feedback = "¡Prepárate para hacer la seña!"
+            if is_dynamic and lstm_detector.buffer_progress < 1.0:
+                pct = int(lstm_detector.buffer_progress * 100)
+                self.mensaje_feedback = f"Acumulando seña... {pct}%"
+            else:
+                self.mensaje_feedback = "¡Prepárate para hacer la seña!"
             self.color_feedback = COLORS['warning']
         else:
             if not self.evaluado:
-                # Evaluar por mayoría de votos
                 clases_validas = [d for d in self.detections_deque if d is not None]
+                min_votes = LSTM_CONFIG['min_votes'] if is_dynamic else 3
+
                 if len(clases_validas) == 0:
                     self.mensaje_feedback = "❌ No se detectó la seña claramente"
                     self.color_feedback = COLORS['error']
@@ -478,14 +496,20 @@ class SignLanguageGame:
                     counts = Counter(clases_validas)
                     top_class, top_count = counts.most_common(1)[0]
 
-                    if top_class.upper() == self.vocal_actual.upper() and top_count >= 3:
+                    correct = (
+                        top_class == self.vocal_actual
+                        if is_dynamic
+                        else top_class.upper() == self.vocal_actual.upper()
+                    )
+
+                    if correct and top_count >= min_votes:
                         self.puntuacion += 1
                         self.mejor_puntuacion = max(self.mejor_puntuacion, self.puntuacion)
-                        self.mensaje_feedback = f"🎉 ¡Excelente! Acertaste la {self.vocal_actual}"
+                        self.mensaje_feedback = f"🎉 ¡Excelente! Acertaste '{sign_display}'"
                         self.color_feedback = COLORS['success']
                         self.particles.add_success_particles(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
                     else:
-                        self.mensaje_feedback = f"❌ Incorrecto. Era la letra {self.vocal_actual}"
+                        self.mensaje_feedback = f"❌ Incorrecto. Era '{sign_display}'"
                         self.color_feedback = COLORS['error']
                         self.particles.add_error_particles(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
                         self.add_screen_shake(8, 400)
@@ -496,7 +520,12 @@ class SignLanguageGame:
         # Manejar fin del feedback → nueva ronda
         if self.evaluado and self.feedback_start is not None:
             if time.time() - self.feedback_start > self.feedback_duracion:
-                self.vocal_actual = random.choice(self.vocales)
+                self.vocal_actual = random.choice(self.all_signs)
+                # Si la nueva seña es dinámica, inicializar/resetear LSTM
+                if self.vocal_actual in DYNAMIC_SIGNS:
+                    lstm_detector.initialize()
+                    lstm_detector.reset()
+                    self._lstm_frame_count = 0
                 self.tiempo_inicio = time.time()
                 self.mensaje_feedback = ""
                 self.evaluado = False
@@ -586,30 +615,59 @@ class SignLanguageGame:
         title_rect = title_text.get_rect(centerx=main_panel_rect[0] + main_panel_rect[2] // 2, y=60 + offset_y)
         surface.blit(title_text, title_rect)
 
-        # ── Letra objetivo con animación de pulso ──
+        # ── Carta de la seña objetivo ──
         self.pulse_time += 0.1
         pulse_scale = 1 + 0.1 * math.sin(self.pulse_time)
 
-        letter_card_rect = (100 + offset_x, 150 + offset_y, 200, 250)
-        draw_rounded_rect(surface, COLORS['primary'], letter_card_rect, 20)
+        is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+        sign_display = SIGN_DISPLAY_NAMES.get(self.vocal_actual, self.vocal_actual)
 
-        # Efecto de brillo en la carta
+        letter_card_rect = (60 + offset_x, 150 + offset_y, 240, 250)
+        card_color = COLORS['secondary'] if is_dynamic else COLORS['primary']
+        draw_rounded_rect(surface, card_color, letter_card_rect, 20)
         highlight_rect = (letter_card_rect[0], letter_card_rect[1], letter_card_rect[2], 50)
-        draw_rounded_rect(surface, tuple(min(255, c + 30) for c in COLORS['primary']), highlight_rect, 20)
+        draw_rounded_rect(surface, tuple(min(255, c + 30) for c in card_color), highlight_rect, 20)
 
-        # Letra grande con escala de pulso
-        letter_surface = font_title.render(self.vocal_actual, True, COLORS['white'])
-        letter_surface = pygame.transform.scale(letter_surface,
-                                               (int(letter_surface.get_width() * pulse_scale),
-                                                int(letter_surface.get_height() * pulse_scale)))
-        letter_rect = letter_surface.get_rect(center=(letter_card_rect[0] + letter_card_rect[2] // 2,
-                                                     letter_card_rect[1] + letter_card_rect[3] // 2))
-        surface.blit(letter_surface, letter_rect)
+        if is_dynamic:
+            # Señas dinámicas: nombre en dos líneas si es largo
+            words = sign_display.split()
+            font_sign = font_large if len(sign_display) > 8 else font_title
+            cy = letter_card_rect[1] + letter_card_rect[3] // 2 - (len(words) - 1) * 25
+            for w in words:
+                ws = font_sign.render(w, True, COLORS['white'])
+                surface.blit(ws, ws.get_rect(centerx=letter_card_rect[0] + letter_card_rect[2] // 2, centery=cy))
+                cy += font_sign.get_height() - 10
+        else:
+            # Vocales: letra grande con pulso
+            letter_surface = font_title.render(sign_display, True, COLORS['white'])
+            letter_surface = pygame.transform.scale(
+                letter_surface,
+                (int(letter_surface.get_width() * pulse_scale),
+                 int(letter_surface.get_height() * pulse_scale)),
+            )
+            letter_rect = letter_surface.get_rect(
+                center=(letter_card_rect[0] + letter_card_rect[2] // 2,
+                        letter_card_rect[1] + letter_card_rect[3] // 2)
+            )
+            surface.blit(letter_surface, letter_rect)
 
         # ── Instrucciones ──
-        instruction_text = font_medium.render(f"Haz la seña para la letra:", True, COLORS['light_gray'])
-        instruction_rect = instruction_text.get_rect(centerx=200 + offset_x, y=120 + offset_y)
+        instr = "Realiza la seña:" if is_dynamic else "Haz la seña para la letra:"
+        instruction_text = font_medium.render(instr, True, COLORS['light_gray'])
+        instruction_rect = instruction_text.get_rect(centerx=180 + offset_x, y=120 + offset_y)
         surface.blit(instruction_text, instruction_rect)
+
+        # ── Barra de buffer LSTM (solo en señas dinámicas, durante preparación) ──
+        if is_dynamic and tiempo_restante > 0:
+            buf = lstm_detector.buffer_progress
+            bar_w, bar_h = 500, 12
+            bx = 100 + offset_x
+            by = 475 + offset_y
+            draw_rounded_rect(surface, COLORS['dark_gray'], (bx, by, bar_w, bar_h), 6)
+            if buf > 0:
+                draw_rounded_rect(surface, COLORS['secondary'], (bx, by, int(bar_w * buf), bar_h), 6)
+            lbl = font_small.render("Acumulando seña...", True, COLORS['light_gray'])
+            surface.blit(lbl, (bx, by - 22))
 
         # ── Mostrar nombre del niño ──
         try:
@@ -654,20 +712,28 @@ class SignLanguageGame:
                                                           feedback_panel_rect[1] + feedback_panel_rect[3] // 2))
             surface.blit(feedback_text, feedback_rect)
 
-        # ── Barra de vocales ──
-        vowel_y = 650 + offset_y
-        for i, vowel in enumerate(self.vocales):
-            vowel_x = 120 + i * 110 + offset_x
-            vowel_rect = (vowel_x, vowel_y, 80, 80)
+        # ── Barra de señas (vocales arriba, dinámicas abajo) ──
+        vowels = ['A', 'E', 'I', 'O', 'U']
+        vow_y = 630 + offset_y
+        vow_w = 70
+        vow_start = 80 + offset_x
+        for i, v in enumerate(vowels):
+            vr = (vow_start + i * 90, vow_y, vow_w, vow_w)
+            color = COLORS['accent'] if v == self.vocal_actual else COLORS['dark_gray']
+            draw_rounded_rect(surface, color, vr, 12)
+            vt = font_large.render(v, True, COLORS['white'])
+            surface.blit(vt, vt.get_rect(center=(vr[0] + vow_w // 2, vr[1] + vow_w // 2)))
 
-            if vowel == self.vocal_actual:
-                draw_rounded_rect(surface, COLORS['accent'], vowel_rect, 15)
-            else:
-                draw_rounded_rect(surface, COLORS['dark_gray'], vowel_rect, 15)
-
-            vowel_text = font_large.render(vowel, True, COLORS['white'])
-            vowel_text_rect = vowel_text.get_rect(center=(vowel_x + 40, vowel_y + 40))
-            surface.blit(vowel_text, vowel_text_rect)
+        dyn_y = 710 + offset_y
+        dyn_signs = [('hola', 'Hola'), ('hola_mundo', 'H.Mundo'), ('buenos_dias', 'B.Días')]
+        dyn_w = 140
+        dyn_start = 80 + offset_x
+        for i, (key, short) in enumerate(dyn_signs):
+            dr = (dyn_start + i * 160, dyn_y, dyn_w, 50)
+            color = COLORS['accent'] if key == self.vocal_actual else COLORS['card_bg']
+            draw_rounded_rect(surface, color, dr, 10)
+            dt = font_small.render(short, True, COLORS['white'])
+            surface.blit(dt, dt.get_rect(center=(dr[0] + dyn_w // 2, dr[1] + 25)))
 
         # ── Dibujar partículas ──
         self.particles.update()
@@ -696,18 +762,40 @@ class SignLanguageGame:
                     elif event.key == pygame.K_r:
                         # Reiniciar juego
                         self.puntuacion = 0
-                        self.vocal_actual = random.choice(self.vocales)
+                        self.vocal_actual = random.choice(self.all_signs)
+                        if self.vocal_actual in DYNAMIC_SIGNS:
+                            lstm_detector.initialize()
+                            lstm_detector.reset()
+                            self._lstm_frame_count = 0
                         self.tiempo_inicio = time.time()
                         self.detections_deque.clear()
 
-            # Procesar frame de cámara (Optimizado: Inferencia solo según configuración)
-            if self.frame_count % DETECTION_CONFIG['skip_frames'] == 0:
-                frame, detected_class, detected_conf, detected_box = self.process_frame()
-                self.last_detected = (frame, detected_class, detected_conf, detected_box)
+            # Capturar frame (siempre necesario para mostrar cámara)
+            ret, frame = self.cap.read()
+            if not ret:
+                frame = None
+
+            is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+
+            if is_dynamic:
+                # ── Detección LSTM ──
+                self._lstm_frame_count += 1
+                detected_box = None
+                if frame is not None and self._lstm_frame_count % LSTM_CONFIG['skip_frames'] == 0:
+                    detected_class, detected_conf = lstm_detector.process_frame(frame)
+                else:
+                    detected_class, detected_conf = None, 0.0
             else:
-                ret, frame = self.cap.read()
-                frame, detected_class, detected_conf, detected_box = self.last_detected
-            
+                # ── Detección YOLO ──
+                if self.frame_count % DETECTION_CONFIG['skip_frames'] == 0:
+                    if frame is not None:
+                        detected_class, detected_conf, detected_box = detector.predict(frame)
+                    else:
+                        detected_class, detected_conf, detected_box = None, 0.0, None
+                    self.last_detected = (frame, detected_class, detected_conf, detected_box)
+                else:
+                    frame, detected_class, detected_conf, detected_box = self.last_detected
+
             self.frame_count += 1
 
             # Actualizar lógica del juego
@@ -728,6 +816,7 @@ class SignLanguageGame:
 
         # Limpieza de recursos
         self.cap.release()
+        lstm_detector.close()
         
         # Guardar progreso antes de salir
         try:

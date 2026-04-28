@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import tensorflow as tf; print\\('TF version:', tf.__version__\\); import keras; print\\('Keras version:', keras.__version__\\)\")",
+      "Bash(python 02_entrenar_modelo.py)",
+      "Bash(python -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

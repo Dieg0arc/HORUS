@@ -15,12 +15,14 @@ class Detector:
         return cls._instance
     
     def _init_detector(self):
-        # Encontrar el modelo (mismo path que game.py)
+        # Encontrar el modelo en rutas posibles
         current_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(current_dir)
         possible_paths = [
-            os.path.join(os.path.dirname(current_dir), "upload", "best.pt"),
+            os.path.join(base_dir, "runs", "segment", "train_gpu", "weights", "best.pt"),
+            os.path.join(base_dir, "runs", "segment", "train_gpu2", "weights", "best.pt"),
+            os.path.join(base_dir, "upload", "best.pt"),
             os.path.join(current_dir, "best.pt"),
-            r"C:\Users\Asus\Desktop\U\Semillero\train\best.pt"
         ]
         
         model_path = None
@@ -30,7 +32,7 @@ class Detector:
                 break
         
         if model_path is None:
-            print("Error: No se encontró best.pt")
+            print("Error: No se encontró best.pt en las rutas esperadas")
             model_path = "best.pt"
             
         print(f"Buscando modelo en: {model_path}")
