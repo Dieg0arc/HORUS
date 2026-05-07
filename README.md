@@ -1,195 +1,260 @@
-<!-- @format -->
+<div align="center">
 
-    # HORUS — Juego Interactivo de Lenguaje de Señas
+# HORUS
 
-    Proyecto educativo que usa visión por computador para enseñar lenguaje de señas a niños mediante un juego interactivo con Pygame.
+### Juego Interactivo de Lenguaje de Señas
 
-    - **Vocales (A, E, I, O, U):** detectadas con un modelo YOLO de segmentación en tiempo real.
-    - **Señas dinámicas (hola, hola mundo, buenos días):** reconocidas con secuencias MediaPipe + LSTM.
+*Enseñando lenguaje de señas a niños mediante visión por computador*
 
-    ---
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![PyGame](https://img.shields.io/badge/PyGame-2.5%2B-green?logo=python)](https://www.pygame.org/)
+[![YOLO](https://img.shields.io/badge/YOLO-Ultralytics-orange)](https://ultralytics.com/)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-CPU-FF6F00?logo=tensorflow&logoColor=white)](https://www.tensorflow.org/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-Landmarks-blueviolet)](https://mediapipe.dev/)
 
-    ## Requisitos Previos
+</div>
 
-    - Python 3.10+
-    - Cámara web funcional
-    - Modelos entrenados (ver sección [Modelos](#modelos))
+---
 
-    ---
+## ¿Qué es HORUS?
 
-    ## Instalación
+HORUS es un proyecto educativo que combina **visión por computador** e **inteligencia artificial** para enseñar lenguaje de señas colombiano a niños a través de un juego interactivo. El sistema detecta señas en tiempo real usando la cámara web y proporciona retroalimentación inmediata.
 
-    ```bash
-    # 1. Clonar el repositorio
-    git clone https://github.com/Dieg0arc/HORUS.git
-    cd HORUS
+| Tipo de seña | Señas soportadas | Tecnología |
+|---|---|---|
+| Estáticas | Vocales: **A, E, I, O, U** | YOLO Segmentación |
+| Dinámicas | **Hola · Hola mundo · Buenos días** | MediaPipe + LSTM |
 
-    # 2. Crear entorno virtual
-    python -m venv venv
+---
 
-    # 3. Activar entorno
-    # En Windows:
-    .\venv\Scripts\activate
-    # En Linux/Mac:j
-    source venv/bin/activate
+## Tabla de Contenidos
 
-    # 4. Instalar dependencias
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
-    ```
+- [Requisitos](#requisitos)
+- [Instalación](#instalación)
+- [Modelos](#modelos)
+- [Ejecución](#ejecución)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Dependencias](#dependencias)
+- [Troubleshooting](#troubleshooting)
+- [Equipo](#equipo)
 
-    ---
+---
 
-    ## Modelos
+## Requisitos
 
-    Los archivos de modelo **no están incluidos en el repositorio** (están en `.gitignore`).
-    Necesitas dos archivos antes de poder ejecutar el proyecto:
+- Python **3.10** o superior
+- Cámara web funcional
+- Modelos entrenados (ver sección [Modelos](#modelos))
 
-    | Archivo | Ruta esperada | Descripción |
-    |---------|--------------|-------------|
-    | `best.pt` | `runs/segment/vocales-2/weights/best.pt` | Modelo YOLO para vocales |
-    | `action.h5` | `ai/sign_language/action.h5` | Modelo LSTM para señas dinámicas |
+---
 
-    ### Opción A — Entrenar desde cero
+## Instalación
 
-    #### 1) Entrenar el modelo YOLO (vocales)
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/Dieg0arc/HORUS.git
+cd HORUS
 
-    Coloca tu dataset en el formato YOLO y ejecuta:
+# 2. Crear entorno virtual
+python -m venv venv
 
-    ```bash
-    python upload/train.py
-    ```
+# 3. Activar entorno
+.\venv\Scripts\activate        # Windows
+source venv/bin/activate       # Linux / Mac
 
-    El modelo se guarda automáticamente en `runs/segment/vocales-2/weights/best.pt`.
+# 4. Instalar dependencias
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-    #### 2) Extraer keypoints para el LSTM
+---
 
-    Coloca videos de cada seña en carpetas dentro de `data/videos/`:
+## Modelos
 
-    ```
-    data/videos/
-    ├── hola/
-    ├── hola_mundo/
-    ├── buenos_dias/
-    └── no_sena/
-    ```
+> Los archivos de modelo **no están incluidos en el repositorio** (están en `.gitignore`).
+> Necesitas los siguientes archivos antes de ejecutar el proyecto:
 
-    Luego extrae los keypoints:
+| Archivo | Ruta esperada | Descripción |
+|---------|--------------|-------------|
+| `best.pt` | `runs/segment/vocales-2/weights/best.pt` | Modelo YOLO — vocales |
+| `action.h5` | `ai/sign_language/action.h5` | Modelo LSTM — señas dinámicas |
 
-    ```bash
-    python 01_extraer_keypoints.py
-    ```
+Tienes dos opciones para obtenerlos:
 
-    Genera archivos `.npy` en `data/keypoints/<clase>/`.
+<details>
+<summary><strong>Opción A — Entrenar desde cero</strong></summary>
 
-    #### 3) Entrenar el modelo LSTM
+### 1) Modelo YOLO (vocales)
 
-    ```bash
-    python 02_entrenar_modelo.py
-    ```
+Coloca tu dataset en formato YOLO y ejecuta:
 
-    Guarda el modelo en `ai/sign_language/action.h5` y las etiquetas en `ai/sign_language/labels.json`.
+```bash
+python upload/train.py
+```
 
-    ### Opción B — Recibir los modelos del equipo
+El modelo se guarda en `runs/segment/vocales-2/weights/best.pt`.
 
-    Solicita al equipo los archivos `best.pt` y `action.h5` y colócalos en las rutas de la tabla anterior.
+---
 
-    ---
+### 2) Extraer keypoints para el LSTM
 
-    ## Ejecución
+Organiza los videos de cada seña en carpetas dentro de `data/videos/`:
 
-    ### Juego principal
+```
+data/videos/
+├── hola/
+├── hola_mundo/
+├── buenos_dias/
+└── no_sena/
+```
 
-    ```bash
-    python main.py
-    ```
+Luego extrae los keypoints:
 
-    Flujo: Login → Menú → Aprendizaje / Juego.
-    Teclas: **Q** salir, **R** reiniciar puntuación (en escena de juego).
+```bash
+python 01_extraer_keypoints.py
+```
 
-    ### Detección LSTM en tiempo real (standalone)
+Genera archivos `.npy` en `data/keypoints/<clase>/`.
 
-    ```bash
-    python 03_deteccion_tiempo_real.py
-    ```
+---
 
-    Abre la cámara y clasifica señas dinámicas. Presiona **q** para salir.
+### 3) Entrenar el modelo LSTM
 
-    ### Scripts de prueba
+```bash
+python 02_entrenar_modelo.py
+```
 
-    ```bash
-    python upload/test.py           # YOLO con segmentación y bounding boxes
-    python upload/WebCam_Testing.py # Vista rápida de predicciones YOLO
-    ```
+Guarda el modelo en `ai/sign_language/action.h5` y las etiquetas en `ai/sign_language/labels.json`.
 
-    ---
+</details>
 
-    ## Estructura del Proyecto
+<details>
+<summary><strong>Opción B — Recibir los modelos del equipo</strong></summary>
 
-    ```
-    HORUS/
-    ├── main.py                        # Punto de entrada
-    ├── core/
-    │   ├── config.py                  # Constantes globales (colores, rutas, umbrales)
-    │   ├── detector.py                # Singleton YOLO
-    │   ├── lstm_detector.py           # Singleton LSTM + MediaPipe
-    │   └── user_manager.py            # Persistencia de usuarios en users.json
-    ├── scenes/
-    │   ├── base_scene.py
-    │   ├── login_scene.py
-    │   ├── menu_scene.py
-    │   ├── learning_scene.py          # Modo Aprender (vocales + señas)
-    │   └── game_scene.py              # Modo Juego
-    ├── models/                        # Modelos MediaPipe (.task)
-    ├── ai/sign_language/
-    │   ├── action.h5                  # Modelo LSTM (no en git)
-    │   └── labels.json                # Etiquetas de clases
-    ├── runs/segment/vocales-2/
-    │   └── weights/best.pt            # Modelo YOLO (no en git)
-    ├── assets/
-    │   └── images/                    # Imágenes de referencia A-U
-    ├── data/keypoints/                # Keypoints .npy por clase
-    ├── upload/                        # Scripts legacy y de entrenamiento
-    ├── users.json                     # Progreso de usuarios
-    └── requirements.txt
-    ```
+Solicita al equipo los archivos `best.pt` y `action.h5` y colócalos en las rutas indicadas en la tabla anterior.
 
-    ---
+</details>
 
-    ## Dependencias
+---
 
-    | Paquete | Versión | Uso |
-    |---------|---------|-----|
-    | `pygame` | >=2.5.2 | Motor gráfico |
-    | `opencv-python` | >=4.9.0 | Captura y procesamiento de video |
-    | `ultralytics` | >=8.3.0 | Framework YOLO |
-    | `numpy` | >=1.26.0 | Arrays y keypoints |
-    | `torch` | >=2.0.0 | Backend deep learning |
-    | `mediapipe` | >=0.10.0 | Extracción de landmarks |
-    | `tensorflow-cpu` | >=2.15.0 | Inferencia LSTM |
+## Ejecución
 
-    ---
+### Juego principal
 
-    ## Troubleshooting
+```bash
+python main.py
+```
 
-    **El juego abre pero no detecta nada:**
-    - Verifica que `best.pt` existe en `runs/segment/vocales-2/weights/`.
-    - Verifica que la cámara no esté siendo usada por otra aplicación.
+**Flujo:** Login → Menú → Aprendizaje / Juego
 
-    **Error al iniciar el modo de señas dinámicas:**
-    - Verifica que `action.h5` existe en `ai/sign_language/`.
-    - Verifica que `labels.json` existe en `ai/sign_language/`.
-    - Verifica que los modelos MediaPipe `.task` existen en `models/`.
+| Tecla | Acción |
+|-------|--------|
+| `Q` | Salir |
+| `R` | Reiniciar puntuación *(solo en escena de juego)* |
 
-    **Conflicto TensorFlow + PyTorch:**
-    - Usa `tensorflow-cpu` (no `tensorflow`) para evitar conflictos de CUDA con PyTorch.
-    - Si persiste, crea un entorno virtual separado.
+---
 
-    **Cámara no encontrada:**
-    - En Windows, verifica permisos de cámara en Configuración → Privacidad → Cámara.
+### Detección LSTM en tiempo real *(standalone)*
 
-    ---
+```bash
+python 03_deteccion_tiempo_real.py
+```
 
-    ## Equipo
+Abre la cámara y clasifica señas dinámicas en tiempo real. Presiona `Q` para salir.
 
-    Equipo HORUS — Semillero de Investigación.
+---
+
+### Scripts de prueba
+
+```bash
+python upload/test.py            # YOLO con segmentación y bounding boxes
+python upload/WebCam_Testing.py  # Vista rápida de predicciones YOLO
+```
+
+---
+
+## Estructura del Proyecto
+
+```
+HORUS/
+├── main.py                        # Punto de entrada
+├── core/
+│   ├── config.py                  # Constantes globales (colores, rutas, umbrales)
+│   ├── detector.py                # Singleton YOLO
+│   ├── lstm_detector.py           # Singleton LSTM + MediaPipe
+│   └── user_manager.py            # Persistencia de usuarios en users.json
+├── scenes/
+│   ├── base_scene.py
+│   ├── login_scene.py
+│   ├── menu_scene.py
+│   ├── learning_scene.py          # Modo Aprender (vocales + señas dinámicas)
+│   └── game_scene.py              # Modo Juego
+├── models/                        # Modelos MediaPipe (.task)
+├── ai/sign_language/
+│   ├── action.h5                  # Modelo LSTM (no en git)
+│   └── labels.json                # Etiquetas de clases
+├── runs/segment/vocales-2/
+│   └── weights/best.pt            # Modelo YOLO (no en git)
+├── assets/
+│   └── images/                    # Imágenes de referencia A–U
+├── data/keypoints/                # Keypoints .npy por clase
+├── upload/                        # Scripts de entrenamiento y prueba
+├── users.json                     # Progreso de usuarios
+└── requirements.txt
+```
+
+---
+
+## Dependencias
+
+| Paquete | Versión mínima | Uso |
+|---------|---------------|-----|
+| `pygame` | 2.5.2 | Motor gráfico |
+| `opencv-python` | 4.9.0 | Captura y procesamiento de video |
+| `ultralytics` | 8.3.0 | Framework YOLO |
+| `numpy` | 1.26.0 | Arrays y keypoints |
+| `torch` | 2.0.0 | Backend deep learning |
+| `mediapipe` | 0.10.0 | Extracción de landmarks |
+| `tensorflow-cpu` | 2.15.0 | Inferencia LSTM |
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><strong>El juego abre pero no detecta nada</strong></summary>
+
+- Verifica que `best.pt` existe en `runs/segment/vocales-2/weights/`.
+- Verifica que la cámara no esté siendo usada por otra aplicación.
+
+</details>
+
+<details>
+<summary><strong>Error al iniciar el modo de señas dinámicas</strong></summary>
+
+- Verifica que `action.h5` existe en `ai/sign_language/`.
+- Verifica que `labels.json` existe en `ai/sign_language/`.
+- Verifica que los modelos MediaPipe `.task` existen en `models/`.
+
+</details>
+
+<details>
+<summary><strong>Conflicto TensorFlow + PyTorch</strong></summary>
+
+- Usa `tensorflow-cpu` (no `tensorflow`) para evitar conflictos de CUDA con PyTorch.
+- Si el conflicto persiste, crea un entorno virtual separado para cada modelo.
+
+</details>
+
+<details>
+<summary><strong>Cámara no encontrada (Windows)</strong></summary>
+
+- Ve a **Configuración → Privacidad → Cámara** y verifica que la aplicación tenga permisos.
+
+</details>
+
+---
+
+## Equipo
+
+Desarrollado por el **Equipo HORUS** — Semillero de Investigación.
