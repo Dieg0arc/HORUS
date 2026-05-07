@@ -8,16 +8,16 @@
 
 ## Resumen Ejecutivo
 
-El proyecto tenía **33 problemas identificados**. Se corrigieron **12 en la primera ronda** (2026-05-06), cubriendo todos los P1 y la mayoría de P2/P3 prioritarios.
+El proyecto tenía **33 problemas identificados**. Se corrigieron **12 en la primera ronda** (2026-05-06) y **14 más en la segunda ronda** (2026-05-06), cerrando todos los P1, P2 y la mayoría de P3/P4.
 
 | Prioridad | Total | Resueltos | Pendientes |
 |-----------|-------|-----------|------------|
 | P1 Crítico | 5 | 5 ✅ | 0 |
-| P2 Alto | 8 | 5 ✅ | 3 |
-| P3 Medio | 7 | 2 ✅ | 5 |
-| P4 Bajo | 13 | 0 | 13 |
+| P2 Alto | 8 | 8 ✅ | 0 |
+| P3 Medio | 7 | 6 ✅ | 1 (M3) |
+| P4 Bajo | 13 | 10 ✅ | 3 (B7✅implícito, B8✅, resto menor) |
 
-**Orden de ataque recomendado:** C1 → C2 → C3 → A1 → A2 → A8 → C4 → A4, luego P2 restantes, luego P3.
+**Pendientes remanentes:** M3 (inconsistencia tamaños de fuente), B9✅ resuelto.
 
 ---
 
@@ -59,11 +59,11 @@ El bloque `except Exception` ahora llama `_log.error("Error en predict: %s", e, 
 
 ---
 
-### C5 · `screen` global en `game.py` capturado en tiempo de importación
+### C5 · `screen` global en `game.py` capturado en tiempo de importación ✅ RESUELTO
 
-**Archivo:** [`game.py:59`](game.py#L59)
+**Archivo:** [`game.py`](game.py)
 
-`get_surface()` sigue ejecutándose en tiempo de importación cuando el módulo se carga desde `GameScene`. El riesgo persiste si el display aún no está inicializado. **Pendiente** — requiere refactorizar `SignLanguageGame` para recibir la superficie como parámetro en lugar de capturarla globalmente.
+`screen` se inicializa como `None` al importar. Se resuelve con `pygame.display.get_surface()` al inicio de `run()` (con `global screen`), garantizando que el display ya esté activo cuando se captura.
 
 ---
 
@@ -113,31 +113,27 @@ La carga LSTM fue movida a un `threading.Thread(daemon=True)`. El estado `"loadi
 
 ---
 
-### A6 · `predict_smoothed()` en `detector.py` es código muerto
+### A6 · `predict_smoothed()` en `detector.py` es código muerto ✅ RESUELTO
 
-**Archivo:** [`core/detector.py:83-99`](core/detector.py#L83-L99)
+**Archivo:** [`core/detector.py`](core/detector.py)
 
-`predict_smoothed()` implementa suavizado temporal con ventana deslizante, pero ni `game.py` ni `learning_scene.py` la usan. Ambos implementan su propio buffer de votos encima de `predict()` raw. El método existe pero no se llama. Confunde el API: ¿cuál es la forma correcta de llamar al detector?
-
----
-
-### A7 · LSTM entrenado con `activation='relu'` en capas LSTM
-
-**Archivo:** [`02_entrenar_modelo.py:67-71`](02_entrenar_modelo.py#L67-L71)
-
-```python
-layers.LSTM(64, return_sequences=True, activation="relu"),
-```
-
-Las capas LSTM usan `activation='relu'` explícito. El estándar es `activation='tanh'` (default de Keras). ReLU en LSTM puede causar explosión de gradiente durante entrenamiento. El modelo actual ya está entrenado, pero si se reentrena, la precisión puede ser subóptima.
+`predict_smoothed()`, `_SMOOTHING_WINDOW` y `_smooth_buf` eliminados. El import de `deque` también fue removido. El API del detector ahora expone solo `predict()`.
 
 ---
 
-### A8 · Entrenamiento no guarda `labels.json` automáticamente
+### A7 · LSTM entrenado con `activation='relu'` en capas LSTM ✅ RESUELTO (previo)
 
 **Archivo:** [`02_entrenar_modelo.py`](02_entrenar_modelo.py)
 
-El script carga clases desde las subcarpetas de `data/keypoints/`, entrena el modelo, pero nunca serializa el orden de clases a `ai/sign_language/labels.json`. Si se añade o elimina una seña y se reentrena, el archivo `labels.json` queda desfasado del modelo. Los índices de predicción apuntarán a clases incorrectas.
+Las capas LSTM usan el default `tanh` de Keras. El parámetro explícito `activation="relu"` fue eliminado en una corrección anterior al código de entrenamiento.
+
+---
+
+### A8 · Entrenamiento no guarda `labels.json` automáticamente ✅ RESUELTO (previo)
+
+**Archivo:** [`02_entrenar_modelo.py`](02_entrenar_modelo.py)
+
+`main()` guarda `labels.json` antes de entrenar, garantizando que el orden de clases siempre esté sincronizado con el modelo.
 
 ---
 
@@ -147,30 +143,19 @@ El script carga clases desde las subcarpetas de `data/keypoints/`, entrena el mo
 
 ---
 
-### M1 · Gradiente de fondo: 800 llamadas `draw.line` por frame
+### M1 · Gradiente de fondo: 800 llamadas `draw.line` por frame ✅ RESUELTO
 
-**Archivo:** [`game.py:226-232`](game.py#L226-L232)
+**Archivo:** [`game.py`](game.py)
 
-```python
-for i in range(h):  # h = 800
-    pygame.draw.line(surface, (r, g, b), (x, y + i), (x + w, y + i))
-```
-
-Cada frame renderiza 800 líneas individuales para el fondo. Con `requirements.txt` requiriendo `pygame>=2.5.2`, se puede usar una textura pre-generada como `pygame.Surface`. Este loop es O(height) por frame.
+`draw_gradient_rect` usa un `_gradient_cache` keyed por `(color1, color2, w, h)`. La primera llamada genera una `pygame.Surface` con el gradiente; las siguientes son un simple `blit` O(1).
 
 ---
 
-### M2 · Partículas crean ~600 `pygame.Surface` nuevas por segundo
+### M2 · Partículas crean ~600 `pygame.Surface` nuevas por segundo ✅ RESUELTO
 
-**Archivo:** [`game.py:182`](game.py#L182)
+**Archivo:** [`game.py`](game.py)
 
-```python
-for particle in self.particles:
-    temp_surface = pygame.Surface(...)  # ← nuevo objeto por partícula por frame
-    temp_surface.set_alpha(int(alpha))
-```
-
-Con 20 partículas × 30 FPS = 600 allocations/seg durante efectos de éxito. Las superficies deberían pre-allocarse con los tamaños posibles y reutilizarse.
+`ParticleEffect` ahora usa una única `_particle_surf` SRCALPHA de clase (se crea una sola vez). Cada partícula hace `fill((0,0,0,0))` + `draw.circle` + `blit`, eliminando todas las allocations.
 
 ---
 
@@ -188,11 +173,11 @@ El mismo nombre tiene tamaño diferente según el contexto. `game.py` usa sus pr
 
 ---
 
-### M4 · Lógica de barras de probabilidad LSTM duplicada
+### M4 · Lógica de barras de probabilidad LSTM duplicada ✅ RESUELTO
 
-**Archivos:** [`game.py:563-577`](game.py#L563-L577), [`scenes/learning_scene.py:364-389`](scenes/learning_scene.py#L364-L389)
+**Archivos:** [`game.py`](game.py), [`scenes/learning_scene.py`](scenes/learning_scene.py)
 
-El código que dibuja las barras de probabilidad OpenCV sobre el frame es virtualmente idéntico en ambos archivos, con pequeñas diferencias en `bar_max_w` (200 vs 180) y offsets de texto. Una función utilitaria compartida en `core/` eliminaría la duplicación.
+Función `draw_lstm_prob_bars(frame, labels, probs, bar_max_w)` extraída a [`core/draw_utils.py`](core/draw_utils.py). Ambos archivos la importan y la invocan con su `bar_max_w` correspondiente (200 vs 180).
 
 ---
 
@@ -212,16 +197,11 @@ El bloque `except Exception: pass` ahora llama `_log.error("No se pudo leer %s: 
 
 ---
 
-### M7 · `download_models()` se llama una vez por video, no una vez en total
+### M7 · `download_models()` se llama una vez por video, no una vez en total ✅ RESUELTO
 
-**Archivo:** [`01_extraer_keypoints.py:70`](01_extraer_keypoints.py#L70)
+**Archivo:** [`01_extraer_keypoints.py`](01_extraer_keypoints.py)
 
-```python
-def process_video(video_path, output_path):
-    download_models()  # ← una verificación de filesystem por video
-```
-
-`download_models()` se invoca para cada video del dataset. Aunque el check `if not path.exists()` es rápido, es innecesario hacerlo N veces. Debería llamarse una sola vez en `main()`.
+`download_models()` movido al inicio de `main()`. `process_video()` ya no lo invoca.
 
 ---
 
@@ -247,63 +227,59 @@ El bloque `sys.path.append(upload_path)` fue eliminado junto con los imports de 
 
 ---
 
-### B3 · `SIGN_DISPLAY_NAMES` tiene entradas redundantes para vocales
+### B3 · `SIGN_DISPLAY_NAMES` tiene entradas redundantes para vocales ✅ RESUELTO
 
-**Archivo:** [`core/config.py:62-64`](core/config.py#L62-L64)
+**Archivo:** [`core/config.py`](core/config.py)
 
-`'A': 'A'` es redundante porque `dict.get('A', 'A')` retorna `'A'` de todos modos. Las 5 entradas de vocales pueden eliminarse sin cambiar el comportamiento.
-
----
-
-### B4 · `type('Result', (), {...})()` para wrappear resultados de mano
-
-**Archivo:** [`01_extraer_keypoints.py:125-127`](01_extraer_keypoints.py#L125-L127)
-
-Creación de clases anónimas inline es un code smell. Debería usarse `types.SimpleNamespace` o un `dataclass`.
+Las 5 entradas de vocales `'A': 'A'` ... `'U': 'U'` eliminadas. El dict ahora solo contiene las señas dinámicas con nombres de display no triviales.
 
 ---
 
-### B5 · Posición del cursor de texto incorrecta cuando `user_name` está vacío
+### B4 · `type('Result', (), {...})()` para wrappear resultados de mano ✅ RESUELTO
 
-**Archivo:** [`scenes/login_scene.py:68`](scenes/login_scene.py#L68)
+**Archivo:** [`01_extraer_keypoints.py`](01_extraer_keypoints.py)
 
-El cursor aparece centrado cuando el campo está vacío. Debería aparecer en la posición inicial del área de texto (izquierda del input, no el centro de la pantalla).
-
----
-
-### B6 · Umbral `min_votes=2` de LSTM es demasiado permisivo
-
-**Archivo:** [`core/config.py:72`](core/config.py#L72)
-
-Con `deque(maxlen=15)`, solo 2 detecciones de 15 frames (13%) son suficientes para activar una seña. Puede generar falsos positivos frecuentes. Comparar con YOLO que requiere 3/15 (20%).
+Reemplazado por `types.SimpleNamespace(hand_landmarks=...)`. Import de `types` añadido.
 
 ---
 
-### B7 · `02_entrenar_modelo.py` sin semilla aleatoria fija
+### B5 · Posición del cursor de texto incorrecta cuando `user_name` está vacío ✅ RESUELTO
 
-**Archivo:** [`02_entrenar_modelo.py:105`](02_entrenar_modelo.py#L105)
+**Archivo:** [`scenes/login_scene.py`](scenes/login_scene.py)
 
-Sin `random_seed` en `validation_split`, los resultados no son reproducibles entre ejecuciones. Añadir `tf.random.set_seed(42)` y `numpy.random.seed(42)` al inicio.
-
----
-
-### B8 · `_update_yolo` en `LearningScene` ignora la confianza de detección
-
-**Archivo:** [`scenes/learning_scene.py:211`](scenes/learning_scene.py#L211)
-
-```python
-detected_class, _, _ = detector.predict(frame)  # descarta detected_conf
-```
-
-La confianza no se usa para filtrar detecciones dudosas en modo aprendizaje. Una detección con 71% de confianza se trata igual que una con 99%.
+`cursor_x` cuando el campo está vacío ahora usa `self.input_rect.left + 12` en lugar de `centerx`, posicionando el cursor en el borde izquierdo del input.
 
 ---
 
-### B9 · Título de ventana en `game.py` usa emoji
+### B6 · Umbral `min_votes=2` de LSTM es demasiado permisivo ✅ RESUELTO
 
-**Archivo:** [`game.py:57`](game.py#L57)
+**Archivo:** [`core/config.py`](core/config.py)
 
-Puede no renderizarse en todos los sistemas operativos dependiendo del sistema de fuentes del SO.
+`LSTM_CONFIG['min_votes']` elevado de 2 a 3 (20% de 15 frames), igualando el umbral de YOLO y reduciendo falsos positivos.
+
+---
+
+### B7 · `02_entrenar_modelo.py` sin semilla aleatoria fija ✅ RESUELTO (previo)
+
+**Archivo:** [`02_entrenar_modelo.py`](02_entrenar_modelo.py)
+
+`SEED = 42` como constante; `np.random.seed(SEED)` y `tf.random.set_seed(SEED)` llamados al inicio de `main()`.
+
+---
+
+### B8 · `_update_yolo` en `LearningScene` ignora la confianza de detección ✅ RESUELTO
+
+**Archivo:** [`scenes/learning_scene.py`](scenes/learning_scene.py)
+
+`_update_yolo` ahora compara `detected_conf >= DETECTION_CONFIG['conf_threshold']`; solo agrega al buffer si pasa el umbral. Detecciones débiles contribuyen como `None` (abstención).
+
+---
+
+### B9 · Título de ventana en `game.py` usa emoji ✅ RESUELTO
+
+**Archivo:** [`game.py`](game.py)
+
+Emoji `🤟` eliminado del caption. Título queda como `"Aprende Lenguaje de Señas - Juego Interactivo"`.
 
 ---
 
@@ -315,19 +291,19 @@ El bucle ahora itera sobre `self.particles` directamente (sin copia) y al final 
 
 ---
 
-### B11 · `self.CONF_THRESHOLD` es un atributo redundante
+### B11 · `self.CONF_THRESHOLD` es un atributo redundante ✅ RESUELTO
 
-**Archivo:** [`game.py:351`](game.py#L351)
+**Archivo:** [`game.py`](game.py)
 
-`self.CONF_THRESHOLD = DETECTION_CONFIG['conf_threshold']` duplica el valor de config en un atributo de instancia. Algunas comparaciones usan `self.CONF_THRESHOLD`, otras `DETECTION_CONFIG['conf_threshold']` directamente. Fuente de verdad inconsistente.
+`self.CONF_THRESHOLD` eliminado. Todos los usos reemplazados por `DETECTION_CONFIG['conf_threshold']` directamente.
 
 ---
 
-### B12 · `menu_scene.py` no tiene navegación por teclado
+### B12 · `menu_scene.py` no tiene navegación por teclado ✅ RESUELTO
 
 **Archivo:** [`scenes/menu_scene.py`](scenes/menu_scene.py)
 
-Sin teclas de acceso rápido ni soporte para `K_RETURN` / `K_ESCAPE`. Solo funciona con mouse.
+Soporte añadido para `↑`/`W`, `↓`/`S` (navegar), `Enter`/`Space` (confirmar) y `Escape` (salir). El botón seleccionado se resalta igual que el hover de mouse.
 
 ---
 

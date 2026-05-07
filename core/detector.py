@@ -1,13 +1,11 @@
 import atexit
 import torch
 from ultralytics import YOLO
-from collections import deque
 from pathlib import Path
 from core.logger import get_logger
 
 _log = get_logger("detector")
 
-_SMOOTHING_WINDOW = 5  # frames para suavizado temporal
 _BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -47,7 +45,6 @@ class Detector:
         self.img_size = DETECTION_CONFIG['img_size']
         self.conf_threshold = DETECTION_CONFIG['conf_threshold']
 
-        self._smooth_buf = deque(maxlen=_SMOOTHING_WINDOW)
         atexit.register(self._cleanup)
 
     def _cleanup(self):
@@ -79,24 +76,6 @@ class Detector:
             detected_box = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
 
         return detected_class, detected_conf, detected_box
-
-    def predict_smoothed(self, frame):
-        """Inferencia con suavizado temporal por ventana deslizante.
-
-        Acumula las últimas _SMOOTHING_WINDOW predicciones y retorna
-        la clase más frecuente. Ideal para feedback en tiempo real
-        donde las predicciones frame a frame son ruidosas.
-        """
-        detected_class, detected_conf, detected_box = self.predict(frame)
-        self._smooth_buf.append(detected_class)
-
-        valid = [c for c in self._smooth_buf if c is not None]
-        if not valid:
-            return None, 0.0, detected_box
-
-        smoothed_class = max(set(valid), key=valid.count)
-        smoothed_conf = valid.count(smoothed_class) / len(self._smooth_buf)
-        return smoothed_class, smoothed_conf, detected_box
 
 
 # Instancia global

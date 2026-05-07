@@ -17,7 +17,8 @@ MODEL_PATH = ROOT / "ai" / "sign_language" / "action.h5"
 
 SEQUENCE_LENGTH = 30
 VOTING_WINDOW = 10
-STABILITY_MIN = 0.7
+STABILITY_MIN = 0.80       # subido de 0.7 → requiere 80% de acuerdo en ventana
+MIN_CLASS_CONF = 0.80      # confianza mínima del raw softmax para declarar seña positiva
 
 # Dimensiones del vector — mismo orden que en entrenamiento: [pose, face, lh, rh]
 # pose: 33 landmarks × 3 (x,y,z)         =   99
@@ -104,6 +105,9 @@ class LSTMDetector:
         self._sequence = deque(maxlen=SEQUENCE_LENGTH)
         self._vote_history = deque(maxlen=VOTING_WINDOW)
         self.last_probs = np.zeros(len(self.labels), dtype=np.float32)
+        self._last_pose = None
+        self._last_face = None
+        self._last_hand = None
         self._initialized = True
         _log.info("LSTMDetector inicializado.")
 
@@ -185,6 +189,10 @@ class LSTMDetector:
             face_result = self._face.detect(mp_img)
             hand_result = self._hand.detect(mp_img)
 
+            self._last_pose = pose_result
+            self._last_face = face_result
+            self._last_hand = hand_result
+
             keypoints = self._extract(pose_result, face_result, hand_result)
             self._sequence.append(keypoints)
 
@@ -196,6 +204,14 @@ class LSTMDetector:
             self.last_probs = pred
             idx = int(np.argmax(pred))
             conf = float(pred[idx])
+
+            # Sesgo hacia no_sena: si la confianza bruta es baja, no confirmar seña
+            no_sena_idx = self.labels.index("no_sena") if "no_sena" in self.labels else -1
+            if conf < MIN_CLASS_CONF and idx != no_sena_idx:
+                # Baja confianza → tratar como no_sena
+                if no_sena_idx >= 0:
+                    return "no_sena", float(pred[no_sena_idx])
+                return "no_sena", 1.0 - conf
 
             self._vote_history.append(idx)
 
@@ -213,6 +229,13 @@ class LSTMDetector:
         except Exception as e:
             _log.error("Error en predict: %s", e, exc_info=True)
             return None, 0.0
+
+    def draw_landmarks(self, frame_bgr: np.ndarray) -> None:
+        """Dibuja sobre frame_bgr (in-place) los últimos landmarks detectados."""
+        if not self._initialized or self._last_pose is None:
+            return
+        from core.draw_utils import draw_landmarks_bgr
+        draw_landmarks_bgr(frame_bgr, self._last_pose, self._last_face, self._last_hand)
 
     @property
     def buffer_progress(self) -> float:

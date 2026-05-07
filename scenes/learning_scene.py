@@ -10,6 +10,7 @@ from core.config import (
 )
 from core.detector import detector
 from core.lstm_detector import lstm_detector
+from core.draw_utils import draw_lstm_prob_bars
 
 
 # ── Constantes de layout ──────────────────────────────────────────────
@@ -203,6 +204,8 @@ class LearningScene(BaseScene):
             self._update_yolo(frame)
         else:
             self._update_lstm(frame)
+            if lstm_detector._initialized:
+                lstm_detector.draw_landmarks(frame)
 
         # Convertir frame para mostrar en pantalla (resize primero → cvtColor sobre array más pequeño)
         rgb = cv2.resize(frame, (320, 240))
@@ -218,8 +221,11 @@ class LearningScene(BaseScene):
     def _update_yolo(self, frame):
         if self.frame_count % DETECTION_CONFIG['skip_frames'] != 0:
             return
-        detected_class, _, _ = detector.predict(frame)
-        self._yolo_vote_buf.append(detected_class)
+        detected_class, detected_conf, _ = detector.predict(frame)
+        if detected_conf >= DETECTION_CONFIG['conf_threshold']:
+            self._yolo_vote_buf.append(detected_class)
+        else:
+            self._yolo_vote_buf.append(None)
 
         valid = [c for c in self._yolo_vote_buf if c is not None]
         if not valid:
@@ -372,31 +378,10 @@ class LearningScene(BaseScene):
         screen.blit(lbl, lbl.get_rect(center=(rect.centerx, rect.centery + 30)))
 
     def _draw_prob_bars_on_frame(self, rgb_frame):
-        """Dibuja barras de probabilidad LSTM sobre el frame RGB (estilo standalone PDF)."""
+        """Dibuja barras de probabilidad LSTM sobre el frame RGB."""
         if not lstm_detector._initialized:
             return
-        probs = lstm_detector.last_probs
-        labels = lstm_detector.labels
-        colors_bgr = {
-            'buenos_dias': (255, 200, 100),
-            'hola':        (100, 200, 50),
-            'hola_mundo':  (255, 100, 150),
-            'no_sena':     (100, 100, 255),
-        }
-        display = {'buenos_dias': 'B.Dias', 'hola': 'Hola',
-                   'hola_mundo': 'H.Mundo', 'no_sena': 'No seña'}
-        bar_max_w = 180
-        for i, (label, prob) in enumerate(zip(labels, probs)):
-            y0 = 10 + i * 38
-            y1 = y0 + 30
-            color = colors_bgr.get(label, (200, 200, 200))
-            cv2.rectangle(rgb_frame, (0, y0), (bar_max_w, y1), (40, 40, 60), -1)
-            filled = int(bar_max_w * float(prob))
-            if filled > 0:
-                cv2.rectangle(rgb_frame, (0, y0), (filled, y1), color, -1)
-            cv2.putText(rgb_frame, f"{display.get(label, label)}: {prob:.0%}",
-                        (4, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                        (255, 255, 255), 1, cv2.LINE_AA)
+        draw_lstm_prob_bars(rgb_frame, lstm_detector.labels, lstm_detector.last_probs, bar_max_w=180)
 
     def _draw_lstm_progress(self, screen):
         progress = lstm_detector.buffer_progress

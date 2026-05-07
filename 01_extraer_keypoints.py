@@ -15,6 +15,7 @@ Ejemplo de uso:
 """
 
 import os
+import types
 from pathlib import Path
 import urllib.request
 
@@ -66,9 +67,6 @@ def extract_keypoints(pose_result, face_result, left_hand_result, right_hand_res
 
 def process_video(video_path: Path, output_path: Path):
     """Extrae keypoints de un video y guarda un .npy con la secuencia de largo fijo."""
-
-    download_models()
-
     # Crear los landmarkers
     pose_base_options = python.BaseOptions(model_asset_path=str(POSE_MODEL_PATH))
     pose_options = vision.PoseLandmarkerOptions(
@@ -122,9 +120,9 @@ def process_video(video_path: Path, output_path: Path):
             if hand_result.hand_landmarks:
                 for i, handedness in enumerate(hand_result.handedness):
                     if handedness[0].category_name == 'Left':
-                        left_hand_result = type('Result', (), {'hand_landmarks': hand_result.hand_landmarks[i]})()
+                        left_hand_result = types.SimpleNamespace(hand_landmarks=hand_result.hand_landmarks[i])
                     elif handedness[0].category_name == 'Right':
-                        right_hand_result = type('Result', (), {'hand_landmarks': hand_result.hand_landmarks[i]})()
+                        right_hand_result = types.SimpleNamespace(hand_landmarks=hand_result.hand_landmarks[i])
 
             keypoints = extract_keypoints(pose_result, face_result, left_hand_result, right_hand_result)
             seq.append(keypoints)
@@ -146,6 +144,8 @@ def process_video(video_path: Path, output_path: Path):
 
 
 def main():
+    download_models()
+
     if not VIDEOS_DIR.exists():
         raise RuntimeError(f"No existe la carpeta de videos: {VIDEOS_DIR}")
 
