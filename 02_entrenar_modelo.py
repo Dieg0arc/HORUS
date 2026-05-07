@@ -13,6 +13,7 @@ Ejemplo:
 """
 
 import os
+import json
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +25,12 @@ ROOT = Path(__file__).resolve().parent
 KEYPOINTS_DIR = ROOT / "data" / "keypoints"
 MODEL_DIR = ROOT / "ai" / "sign_language"
 MODEL_FILE = MODEL_DIR / "action.h5"
+LABELS_FILE = MODEL_DIR / "labels.json"
 
 SEQUENCE_LENGTH = 30
-BATCH_SIZE = 32
-EPOCHS = 80
+BATCH_SIZE = 16
+EPOCHS = 200
+SEED = 42
 
 
 def load_data():
@@ -52,7 +55,7 @@ def load_data():
             y.append(idx)
 
     if not X:
-        raise RuntimeError("No se encontró ninguna secuencia válida. Asegúrate de haber ejecutado 01_extraer_keypoints.py y que haya .npy de 30 frames.")
+        raise RuntimeError("No se encontro ninguna secuencia valida. Asegurate de haber ejecutado 01_extraer_keypoints.py y que haya .npy de 30 frames.")
 
     X = np.array(X, dtype=np.float32)
     y = tf.keras.utils.to_categorical(y, num_classes=len(labels))
@@ -63,22 +66,29 @@ def build_model(input_shape, n_classes):
     model = models.Sequential(
         [
             layers.Input(shape=input_shape),
+            layers.LSTM(64, return_sequences=True),       # tanh por defecto, estable
+            layers.Dropout(0.2),
             layers.LSTM(128, return_sequences=True),
-            layers.Dropout(0.4),
-            layers.LSTM(64),
-            layers.Dropout(0.4),
+            layers.Dropout(0.2),
+            layers.LSTM(64, return_sequences=False),
+            layers.Dropout(0.2),
             layers.Dense(64, activation="relu"),
-            layers.Dropout(0.4),
+            layers.Dense(32, activation="relu"),
             layers.Dense(n_classes, activation="softmax"),
         ]
     )
     model.compile(
-        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
+        optimizer=tf.keras.optimizers.Adam(clipnorm=1.0),  # gradient clipping
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
     )
     return model
 
 
 def main():
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+
     X, y, labels = load_data()
     print("Clases:", labels)
     print("X shape:", X.shape, "y shape:", y.shape)
@@ -88,21 +98,29 @@ def main():
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Guardar labels.json sincronizado con el modelo (fix A8)
+    with open(LABELS_FILE, "w", encoding="utf-8") as f:
+        json.dump(labels, f)
+    print("labels.json guardado:", labels)
+
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         str(MODEL_FILE), monitor="val_accuracy", save_best_only=True, verbose=1
     )
+    early_stop = tf.keras.callbacks.EarlyStopping(
+        monitor="val_accuracy", patience=30, restore_best_weights=True, verbose=1
+    )
 
-    history = model.fit(
+    model.fit(
         X,
         y,
         validation_split=0.2,
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
-        callbacks=[checkpoint],
+        callbacks=[checkpoint, early_stop],
         shuffle=True,
     )
 
-    print(f"✅ Entrenamiento completado. Modelo guardado en: {MODEL_FILE}")
+    print("Entrenamiento completado. Modelo guardado en:", MODEL_FILE)
 
 
 if __name__ == "__main__":

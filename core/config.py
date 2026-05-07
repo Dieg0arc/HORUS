@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 # Dimensiones de la ventana
 WIDTH = 1200
@@ -6,18 +6,18 @@ HEIGHT = 800
 FPS = 30
 
 # Rutas de archivos
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VIDEO_PATH = os.path.join(BASE_DIR, "assets", "videos", "A-E-I-O-U.mp4")
-USERS_JSON_PATH = os.path.join(BASE_DIR, "users.json")
-IMAGE_DIR = os.path.join(BASE_DIR, "assets", "images")
+BASE_DIR = Path(__file__).resolve().parent.parent
+VIDEO_PATH = BASE_DIR / "assets" / "videos" / "A-E-I-O-U.mp4"
+USERS_JSON_PATH = BASE_DIR / "users.json"
+IMAGE_DIR = BASE_DIR / "assets" / "images"
 
 # Diccionario de imágenes de vocales
 VOWEL_IMAGES = {
-    'A': os.path.join(IMAGE_DIR, "A.jpeg"),
-    'E': os.path.join(IMAGE_DIR, "E.jpeg"),
-    'I': os.path.join(IMAGE_DIR, "I.jpeg"),
-    'O': os.path.join(IMAGE_DIR, "O.jpeg"),
-    'U': os.path.join(IMAGE_DIR, "U.jpeg"),
+    'A': IMAGE_DIR / "A.jpeg",
+    'E': IMAGE_DIR / "E.jpeg",
+    'I': IMAGE_DIR / "I.jpeg",
+    'O': IMAGE_DIR / "O.jpeg",
+    'U': IMAGE_DIR / "U.jpeg",
 }
 
 # Paleta de colores (Mantenida igual para consistencia visual)
@@ -50,7 +50,9 @@ UI_CONFIG = {
 DETECTION_CONFIG = {
     'img_size': 320,
     'skip_frames': 2,
-    'conf_threshold': 0.70
+    'conf_threshold': 0.70,
+    'min_votes': 3,           # mínimo de detecciones válidas para aceptar una seña vocal
+    'detections_buffer': 15,  # capacidad del buffer circular de detecciones en juego
 }
 
 # Señas dinámicas (reconocidas por el modelo LSTM)

@@ -57,7 +57,7 @@ def extract_keypoints(pose_result, face_result, left_hand_result, right_hand_res
         return np.zeros(n_landmarks * 3, dtype=np.float32)
 
     pose = _landmarks_to_array(pose_result.pose_landmarks[0], 33) if pose_result.pose_landmarks else np.zeros(33 * 3, dtype=np.float32)
-    face = _landmarks_to_array(face_result.face_landmarks[0], 468) if face_result.face_landmarks else np.zeros(468 * 3, dtype=np.float32)
+    face = _landmarks_to_array(face_result.face_landmarks[0], 478) if face_result.face_landmarks else np.zeros(478 * 3, dtype=np.float32)
     left_hand = _landmarks_to_array(left_hand_result.hand_landmarks, 21) if left_hand_result and left_hand_result.hand_landmarks else np.zeros(21 * 3, dtype=np.float32)
     right_hand = _landmarks_to_array(right_hand_result.hand_landmarks, 21) if right_hand_result and right_hand_result.hand_landmarks else np.zeros(21 * 3, dtype=np.float32)
 
@@ -89,8 +89,8 @@ def process_video(video_path: Path, output_path: Path):
     hand_base_options = python.BaseOptions(model_asset_path=str(HAND_MODEL_PATH))
     hand_options = vision.HandLandmarkerOptions(
         base_options=hand_base_options,
-        min_hand_detection_confidence=0.5,
-        min_hand_presence_confidence=0.5,
+        min_hand_detection_confidence=0.1,
+        min_hand_presence_confidence=0.1,
         num_hands=2
     )
     hand_landmarker = vision.HandLandmarker.create_from_options(hand_options)
@@ -167,7 +167,10 @@ def main():
 
         for video_path in videos:
             out_file = out_dir / (video_path.stem + ".npy")
-            print(f"  → Procesando {video_path.name} -> {out_file.relative_to(ROOT)}")
+            if out_file.exists():
+                print(f"  -> Saltando {video_path.name} (ya existe)")
+                continue
+            print(f"  -> Procesando {video_path.name} -> {out_file.relative_to(ROOT)}")
             process_video(video_path, out_file)
 
     print("OK Extraccion de keypoints completada.")

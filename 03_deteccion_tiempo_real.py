@@ -49,11 +49,11 @@ def extract_keypoints(result) -> np.ndarray:
         return np.zeros(n_landmarks * 3, dtype=np.float32)
 
     pose = _landmarks_to_array(result.pose_landmarks, 33)
+    face = _landmarks_to_array(result.face_landmarks, 478)
     lh = _landmarks_to_array(result.left_hand_landmarks, 21)
     rh = _landmarks_to_array(result.right_hand_landmarks, 21)
-    face = _landmarks_to_array(result.face_landmarks, 468)
 
-    return np.concatenate([pose, lh, rh, face], axis=0)
+    return np.concatenate([pose, face, lh, rh], axis=0)
 
 
 def load_labels():

@@ -17,7 +17,7 @@ Uso:
 
     El entrenamiento guardará resultados en::
 
-        HORUS/runs/segment/train_gpu/
+        HORUS/runs/segment/vocales-2/
 
 Note:
     En Windows es necesario usar ``mp.set_start_method("spawn")`` para
@@ -79,7 +79,7 @@ def train_yolo_model():
         device=device,
         workers=2,
         project=r"C:\Users\Asus\Desktop\U\Semillero\HORUS\runs\segment",
-        name="train_gpu",
+        name="vocales-2",
         pretrained=True
     )
 
