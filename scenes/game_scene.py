@@ -1,17 +1,13 @@
-import sys
 import pygame
-from pathlib import Path
 from scenes.base_scene import BaseScene
 from core.config import COLORS, WIDTH, HEIGHT
+from core.logger import get_logger
+
+_log = get_logger("game_scene")
 
 class GameScene(BaseScene):
     def __init__(self):
         super().__init__()
-        upload_path = str(Path(__file__).resolve().parent.parent / "upload")
-        if upload_path not in sys.path:
-            sys.path.append(upload_path)
-
-        # Importar una sola vez en __init__, no en cada llamada a update()
         from game import SignLanguageGame
         self._GameClass = SignLanguageGame
         self.loading = True
@@ -33,7 +29,7 @@ class GameScene(BaseScene):
                 game_instance = self._GameClass()
                 game_instance.run()
             except Exception as e:
-                print(f"Error al iniciar el juego: {e}")
+                _log.error("Error al iniciar el juego: %s", e, exc_info=True)
             finally:
                 self.loading = False
                 from scenes.menu_scene import MenuScene

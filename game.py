@@ -36,7 +36,8 @@ import math
 from collections import deque, Counter
 from core.detector import detector
 from core.lstm_detector import lstm_detector
-from core.config import DETECTION_CONFIG, DYNAMIC_SIGNS, SIGN_DISPLAY_NAMES, LSTM_CONFIG
+from core.config import COLORS, DETECTION_CONFIG, DYNAMIC_SIGNS, SIGN_DISPLAY_NAMES, LSTM_CONFIG
+from core.user_manager import user_manager
 
 # Inicializar Pygame solo si se ejecuta directamente
 if __name__ == "__main__":
@@ -59,24 +60,6 @@ else:
     # Si viene del Scene Manager, usamos la superficie ya existente
     screen = pygame.display.get_surface()
 
-COLORS = {
-    'background': (20, 25, 40),
-    'card_bg': (45, 55, 80),
-    'primary': (100, 200, 255),
-    'secondary': (150, 100, 255),
-    'success': (50, 200, 100),
-    'error': (255, 100, 100),
-    'warning': (255, 200, 50),
-    'white': (255, 255, 255),
-    'light_gray': (200, 200, 200),
-    'dark_gray': (100, 100, 100),
-    'accent': (255, 150, 50)
-}
-"""dict[str, tuple[int, int, int]]: Paleta de colores moderna para la interfaz.
-
-Cada clave es un nombre semántico del color y su valor es una tupla RGB.
-"""
-
 # Fuentes tipográficas
 font_large = pygame.font.Font(None, 48)
 """pygame.font.Font: Fuente grande (48pt) para puntuaciones y títulos secundarios."""
@@ -89,6 +72,19 @@ font_small = pygame.font.Font(None, 24)
 
 font_title = pygame.font.Font(None, 64)
 """pygame.font.Font: Fuente de título (64pt) para el nombre del juego y la letra objetivo."""
+
+_LSTM_PROB_COLORS = {
+    'buenos_dias': (255, 200, 100),
+    'hola': (100, 200, 50),
+    'hola_mundo': (255, 100, 150),
+    'no_sena': (100, 100, 255),
+}
+_LSTM_PROB_LABELS = {
+    'buenos_dias': 'B.Dias',
+    'hola': 'Hola',
+    'hola_mundo': 'H.Mundo',
+    'no_sena': 'No seña',
+}
 
 
 class ParticleEffect:
@@ -157,14 +153,13 @@ class ParticleEffect:
         tamaño (``×0.98``). Elimina partículas cuya vida llega a cero
         o cuyo tamaño es menor a 1 píxel.
         """
-        for particle in self.particles[:]:
+        for particle in self.particles:
             particle['x'] += particle['vx']
             particle['y'] += particle['vy']
-            particle['vy'] += 0.2  # gravedad
+            particle['vy'] += 0.2
             particle['life'] -= 1
             particle['size'] *= 0.98
-            if particle['life'] <= 0 or particle['size'] < 1:
-                self.particles.remove(particle)
+        self.particles = [p for p in self.particles if p['life'] > 0 and p['size'] >= 1]
 
     def draw(self, surface):
         """Dibuja todas las partículas activas sobre la superficie dada.
@@ -188,27 +183,10 @@ class ParticleEffect:
 
 
 def draw_rounded_rect(surface, color, rect, radius=20):
-    """Dibuja un rectángulo con esquinas redondeadas.
-
-    Utiliza una combinación de rectángulos y círculos para simular
-    bordes redondeados, ya que Pygame no soporta esta funcionalidad
-    de forma nativa en versiones anteriores a 2.x.
-
-    Args:
-        surface (pygame.Surface): Superficie sobre la cual dibujar.
-        color (tuple[int, int, int]): Color RGB del rectángulo.
-        rect (tuple[int, int, int, int]): Tupla ``(x, y, ancho, alto)``
-            que define la posición y tamaño del rectángulo.
-        radius (int, optional): Radio de las esquinas redondeadas.
-            Por defecto es ``20``.
-    """
     x, y, w, h = rect
-    pygame.draw.rect(surface, color, (x + radius, y, w - 2 * radius, h))
-    pygame.draw.rect(surface, color, (x, y + radius, w, h - 2 * radius))
-    pygame.draw.circle(surface, color, (x + radius, y + radius), radius)
-    pygame.draw.circle(surface, color, (x + w - radius, y + radius), radius)
-    pygame.draw.circle(surface, color, (x + radius, y + h - radius), radius)
-    pygame.draw.circle(surface, color, (x + w - radius, y + h - radius), radius)
+    if w > 0 and h > 0:
+        r = min(radius, w // 2, h // 2)
+        pygame.draw.rect(surface, color, (x, y, w, h), border_radius=r)
 
 
 def draw_gradient_rect(surface, color1, color2, rect):
@@ -336,7 +314,7 @@ class SignLanguageGame:
         # ── Variables del juego ──
         self.all_signs = ['A', 'E', 'I', 'O', 'U'] + DYNAMIC_SIGNS
         self.puntuacion = 0
-        self.mejor_puntuacion = 0
+        self.mejor_puntuacion = user_manager.get_best_score()
         self.tiempo_preparacion = 5.0
         self.vocal_actual = random.choice(self.all_signs)
         self.mensaje_feedback = ""
@@ -359,7 +337,9 @@ class SignLanguageGame:
         # ── Cámara ──
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(0)
+            self.cap = cv2.VideoCapture(1)
+        if not self.cap.isOpened():
+            print("Advertencia: no se pudo abrir ninguna cámara.")
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -411,30 +391,6 @@ class SignLanguageGame:
             offset_y = random.randint(-self.shake_intensity, self.shake_intensity)
             return offset_x, offset_y
         return 0, 0
-
-    def process_frame(self):
-        """Captura un frame de la cámara y ejecuta la inferencia YOLO.
-
-        Lee un frame del ``VideoCapture``, ejecuta el modelo YOLO sobre él
-        y extrae la detección con mayor confianza (si existe).
-
-        Returns:
-            tuple: Una tupla de 4 elementos:
-                - **frame** (numpy.ndarray | None): Frame capturado en formato
-                  BGR, o ``None`` si la lectura falla.
-                - **detected_class** (str | None): Nombre de la clase detectada
-                  con mayor confianza, o ``None``.
-                - **detected_conf** (float): Confianza de la detección (``0.0``
-                  si no hay detección).
-                - **detected_box** (tuple[int, int, int, int] | None): Coordenadas
-                  del bounding box ``(x1, y1, x2, y2)``, o ``None``.
-        """
-        ret, frame = self.cap.read()
-        if not ret:
-            return None, None, 0.0, None
-
-        detected_class, detected_conf, detected_box = detector.predict(frame)
-        return frame, detected_class, detected_conf, detected_box
 
     def update_game_logic(self, detected_class, detected_conf):
         """Actualiza la lógica del juego basada en la detección actual.
@@ -560,19 +516,16 @@ class SignLanguageGame:
         if is_dynamic and lstm_detector._initialized and lstm_detector.buffer_progress >= 1.0:
             probs = lstm_detector.last_probs
             labels = lstm_detector.labels
-            _colors = {'buenos_dias': (255,200,100), 'hola': (100,200,50),
-                       'hola_mundo': (255,100,150), 'no_sena': (100,100,255)}
-            _disp = {'buenos_dias':'B.Dias','hola':'Hola','hola_mundo':'H.Mundo','no_sena':'No seña'}
             bar_max_w = 200
             for i, (lbl, prob) in enumerate(zip(labels, probs)):
                 y0 = 10 + i * 44
                 y1 = y0 + 36
-                col = _colors.get(lbl, (200, 200, 200))
+                col = _LSTM_PROB_COLORS.get(lbl, (200, 200, 200))
                 cv2.rectangle(frame_copy, (0, y0), (bar_max_w, y1), (40, 40, 60), -1)
                 filled = int(bar_max_w * float(prob))
                 if filled > 0:
                     cv2.rectangle(frame_copy, (0, y0), (filled, y1), col, -1)
-                cv2.putText(frame_copy, f"{_disp.get(lbl,lbl)}: {prob:.0%}",
+                cv2.putText(frame_copy, f"{_LSTM_PROB_LABELS.get(lbl, lbl)}: {prob:.0%}",
                             (4, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
                             (255, 255, 255), 1, cv2.LINE_AA)
 
@@ -690,11 +643,7 @@ class SignLanguageGame:
             surface.blit(lbl, (bx, by - 22))
 
         # ── Mostrar nombre del niño ──
-        try:
-            from core.user_manager import user_manager
-            child_name = user_manager.get_user_name()
-        except ImportError:
-            child_name = "Invitado"
+        child_name = user_manager.get_user_name()
             
         name_text = font_medium.render(f"Jugador: {child_name}", True, COLORS['secondary'])
         surface.blit(name_text, (20 + offset_x, main_panel_rect[1] + main_panel_rect[3] - 40))
@@ -840,11 +789,7 @@ class SignLanguageGame:
             self.cap.release()
             lstm_detector.close()
 
-            try:
-                from core.user_manager import user_manager
-                user_manager.update_stats(self.puntuacion)
-            except Exception as e:
-                print(f"Error al guardar progreso: {e}")
+            user_manager.update_stats(self.puntuacion)
 
             if __name__ == "__main__":
                 pygame.quit()

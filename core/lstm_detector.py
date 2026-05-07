@@ -121,6 +121,7 @@ class LSTMDetector:
         if self._initialized:
             self._sequence.clear()
             self._vote_history.clear()
+            self.last_probs = np.zeros(len(self.labels), dtype=np.float32)
 
     # ------------------------------------------------------------------
     # Extracción de keypoints
@@ -209,7 +210,8 @@ class LSTMDetector:
             # Predicción cruda mientras se construye el historial de votos
             return self.labels[idx], conf
 
-        except Exception:
+        except Exception as e:
+            _log.error("Error en predict: %s", e, exc_info=True)
             return None, 0.0
 
     @property
