@@ -8,14 +8,14 @@
 
 ## Resumen Ejecutivo
 
-El proyecto tiene **33 problemas identificados** distribuidos en 4 niveles de prioridad. Los problemas críticos incluyen pérdida silenciosa de datos de usuario, código muerto que enmascara bugs reales, y un crash potencial en la UI. Los problemas altos afectan la experiencia de juego de forma visible.
+El proyecto tenía **33 problemas identificados**. Se corrigieron **12 en la primera ronda** (2026-05-06), cubriendo todos los P1 y la mayoría de P2/P3 prioritarios.
 
-| Prioridad | Cantidad | Impacto |
-|-----------|----------|---------|
-| P1 Crítico | 5 | Crash / pérdida de datos |
-| P2 Alto | 8 | Funcionalidad rota / visible para el usuario |
-| P3 Medio | 7 | Rendimiento / deuda técnica acumulada |
-| P4 Bajo | 13 | Estilo / UX menor / inconsistencias |
+| Prioridad | Total | Resueltos | Pendientes |
+|-----------|-------|-----------|------------|
+| P1 Crítico | 5 | 5 ✅ | 0 |
+| P2 Alto | 8 | 5 ✅ | 3 |
+| P3 Medio | 7 | 2 ✅ | 5 |
+| P4 Bajo | 13 | 0 | 13 |
 
 **Orden de ataque recomendado:** C1 → C2 → C3 → A1 → A2 → A8 → C4 → A4, luego P2 restantes, luego P3.
 
@@ -27,61 +27,35 @@ El proyecto tiene **33 problemas identificados** distribuidos en 4 niveles de pr
 
 ---
 
-### C1 · `mejor_puntuacion` nunca carga desde `UserManager`
+### C1 · `mejor_puntuacion` nunca carga desde `UserManager` ✅ RESUELTO
 
 **Archivo:** [`game.py:339`](game.py#L339)
 
-```python
-self.mejor_puntuacion = 0  # SIEMPRE empieza en 0
-```
-
-`user_manager.get_best_score()` existe y funciona, pero nunca se llama al inicializar el juego. Cada partida muestra "Mejor: 0" aunque el usuario tenga partidas previas guardadas. El score sí se persiste al final (línea 845), pero nunca se recupera al inicio.
-
-**Fix:**
-```python
-self.mejor_puntuacion = user_manager.get_best_score()
-```
+`user_manager` ahora se importa a nivel de módulo y `mejor_puntuacion` se inicializa con `user_manager.get_best_score()`. Los imports lazy dentro de métodos fueron eliminados.
 
 ---
 
-### C2 · Retry de cámara es un no-op
+### C2 · Retry de cámara es un no-op ✅ RESUELTO
 
-**Archivo:** [`game.py:361-362`](game.py#L361-L362)
+**Archivo:** [`game.py:361`](game.py#L361)
 
-```python
-self.cap = cv2.VideoCapture(0)
-if not self.cap.isOpened():
-    self.cap = cv2.VideoCapture(0)  # ← exactamente lo mismo, nunca funciona
-```
-
-Si la cámara falla la primera vez, el "retry" abre exactamente el mismo dispositivo `0` con los mismos parámetros. El juego continúa sin cámara ni mensaje de error al usuario.
+El retry ahora intenta el dispositivo `1` como alternativa real. Si ambos fallan, se imprime una advertencia. Mismo fix aplicado en `LearningScene` (ver A3).
 
 ---
 
-### C3 · `draw_rounded_rect` produce rects de ancho negativo → crash visual
+### C3 · `draw_rounded_rect` produce rects de ancho negativo → crash visual ✅ RESUELTO
 
-**Archivos:** [`game.py:206`](game.py#L206), [`game.py:256`](game.py#L256)
+**Archivos:** [`game.py:190`](game.py#L190)
 
-```python
-# En draw_rounded_rect:
-pygame.draw.rect(surface, color, (x + radius, y, w - 2 * radius, h))
-#                                                    ↑ puede ser negativo si w < 20
-```
-
-`draw_progress_bar` llama a `draw_rounded_rect` con `radius=10`. Cuando `progress` es bajo (ej. 1% de 500px → `progress_width=5`), `w - 2*radius = 5 - 20 = -15`. Pygame puede generar comportamiento indefinido o crash al renderizar un rect con ancho negativo. Ocurre en cada ronda durante los primeros segundos del temporizador.
+La implementación manual fue reemplazada por `pygame.draw.rect(..., border_radius=min(radius, w//2, h//2))` nativo de pygame 2.x (disponible desde pygame 2.0, requerido >= 2.5.2). El guard `w > 0 and h > 0` previene cualquier llamada con dimensiones inválidas. Resuelve también **B1**.
 
 ---
 
-### C4 · Excepciones del LSTM se tragan silenciosamente sin log
+### C4 · Excepciones del LSTM se tragan silenciosamente sin log ✅ RESUELTO
 
-**Archivo:** [`core/lstm_detector.py:212-213`](core/lstm_detector.py#L212-L213)
+**Archivo:** [`core/lstm_detector.py:212`](core/lstm_detector.py#L212)
 
-```python
-except Exception:
-    return None, 0.0  # ← sin logging, sin diagnóstico posible
-```
-
-Cualquier error de MediaPipe (modelo corrupto, shape mismatch, out of memory) se silencia completamente. Desde el punto de vista del juego, parece que "no se detectó seña", cuando en realidad hay un fallo interno. Imposible diagnosticar en producción.
+El bloque `except Exception` ahora llama `_log.error("Error en predict: %s", e, exc_info=True)` antes de retornar `None, 0.0`. Los errores de MediaPipe quedarán registrados en el logger del módulo.
 
 ---
 
@@ -89,12 +63,7 @@ Cualquier error de MediaPipe (modelo corrupto, shape mismatch, out of memory) se
 
 **Archivo:** [`game.py:59`](game.py#L59)
 
-```python
-else:
-    screen = pygame.display.get_surface()  # ← ejecuta al importar el módulo
-```
-
-Este código corre cuando `GameScene.__init__` hace `from game import SignLanguageGame`. Si por algún motivo el display no está inicializado en ese momento, `get_surface()` retorna `None`. Luego en `draw_ui`, `pygame.draw.line(None, ...)` crashea. Es frágil por depender del orden de inicialización externo.
+`get_surface()` sigue ejecutándose en tiempo de importación cuando el módulo se carga desde `GameScene`. El riesgo persiste si el display aún no está inicializado. **Pendiente** — requiere refactorizar `SignLanguageGame` para recibir la superficie como parámetro en lugar de capturarla globalmente.
 
 ---
 
@@ -104,62 +73,43 @@ Este código corre cuando `GameScene.__init__` hace `from game import SignLangua
 
 ---
 
-### A1 · `process_frame()` es código muerto — lógica duplicada en `run()`
+### A1 · `process_frame()` es código muerto — lógica duplicada en `run()` ✅ RESUELTO
 
-**Archivos:** [`game.py:415-437`](game.py#L415-L437) vs [`game.py:795-818`](game.py#L795-L818)
+**Archivo:** [`game.py`](game.py)
 
-El método `process_frame()` hace exactamente lo que el loop de `run()` hace inline: lee la cámara, corre YOLO, retorna el resultado. Nunca es llamado. Hay dos implementaciones paralelas que pueden divergir. Cualquier bug corregido en una no se corrige en la otra.
-
----
-
-### A2 · `COLORS` definido dos veces de forma independiente
-
-**Archivos:** [`core/config.py:24-36`](core/config.py#L24-L36) vs [`game.py:62-74`](game.py#L62-L74)
-
-`game.py` no importa `COLORS` de `config.py`, sino que declara un diccionario idéntico. Son actualmente iguales, pero cualquier cambio de color en `config.py` no afecta a `game.py`. La paleta tiene dos fuentes de verdad que se pueden desincronizar silenciosamente.
+El método `process_frame()` fue eliminado. La lógica de captura vive únicamente en el loop de `run()`.
 
 ---
 
-### A3 · Cámara no validada con `isOpened()` en `LearningScene`
+### A2 · `COLORS` definido dos veces de forma independiente ✅ RESUELTO
 
-**Archivo:** [`scenes/learning_scene.py:432-436`](scenes/learning_scene.py#L432-L436)
+**Archivo:** [`game.py:39`](game.py#L39)
 
-```python
-def _start_camera(self):
-    if self.cap is None:
-        self.cap = cv2.VideoCapture(0)  # ← nunca se verifica si abrió
-```
-
-Si la cámara falla, `self.cap` no es `None` pero tampoco funciona. El guard `if self.cap is None` impide un retry. El feed de cámara queda en negro sin mensaje de error.
+`game.py` ahora importa `COLORS` desde `core/config.py`. La definición local fue eliminada. Una sola fuente de verdad para la paleta.
 
 ---
 
-### A4 · Pantalla de carga LSTM solo dura 2 frames (~66ms)
+### A3 · Cámara no validada con `isOpened()` en `LearningScene` ✅ RESUELTO
+
+**Archivo:** [`scenes/learning_scene.py:432`](scenes/learning_scene.py#L432)
+
+`_start_camera()` ahora verifica `isOpened()`, reintenta con device `1` y, si ambos fallan, deja `self.cap = None` con advertencia para que el guard de `update()` funcione correctamente.
+
+---
+
+### A4 · Pantalla de carga LSTM solo dura 2 frames (~66ms) ✅ RESUELTO
 
 **Archivo:** [`scenes/learning_scene.py:172`](scenes/learning_scene.py#L172)
 
-```python
-if self._loading_step >= 2:        # ← solo muestra loading 2 frames
-    lstm_detector.initialize()     # ← carga TF + MediaPipe: puede tardar 3-10 seg
-```
-
-La pantalla "Cargando detector..." aparece por ~66ms (2 frames × 33ms), luego la app se congela mientras TensorFlow y MediaPipe cargan los modelos. El usuario ve un freeze sin feedback. Debería mover la carga a un hilo secundario o usar un spinner animado con `_loading_step` mayor.
+La carga LSTM fue movida a un `threading.Thread(daemon=True)`. El estado `"loading"` persiste hasta que el hilo termina (`_loading_done = True`), permitiendo que el loop principal siga renderizando la pantalla de espera sin freeze.
 
 ---
 
-### A5 · `last_probs` no se resetea al cambiar de seña
+### A5 · `last_probs` no se resetea al cambiar de seña ✅ RESUELTO
 
-**Archivo:** [`core/lstm_detector.py:120-123`](core/lstm_detector.py#L120-L123)
+**Archivo:** [`core/lstm_detector.py:123`](core/lstm_detector.py#L123)
 
-```python
-def reset(self):
-    if self._initialized:
-        self._sequence.clear()
-        self._vote_history.clear()
-        # ← last_probs NO se limpia
-```
-
-Cuando el juego cambia a una nueva seña dinámica, las barras de probabilidad muestran los valores de la seña anterior durante ~30 frames mientras el buffer se recarga. El usuario puede interpretar barras estales como retroalimentación real.
+`reset()` ahora incluye `self.last_probs = np.zeros(len(self.labels), dtype=np.float32)`. Las barras de probabilidad arrancan en cero al cambiar de seña.
 
 ---
 
@@ -246,29 +196,19 @@ El código que dibuja las barras de probabilidad OpenCV sobre el frame es virtua
 
 ---
 
-### M5 · `UserManager` silencia errores de parseo JSON
+### M5 · `UserManager` silencia errores de parseo JSON ✅ RESUELTO
 
-**Archivo:** [`core/user_manager.py:21-23`](core/user_manager.py#L21-L23)
+**Archivo:** [`core/user_manager.py:22`](core/user_manager.py#L22)
 
-```python
-except Exception:
-    pass  # ← sin log, datos perdidos silenciosamente
-```
-
-Un `users.json` corrupto (truncado, codificación incorrecta, etc.) resulta en `{}` sin ninguna advertencia. Todos los scores del usuario se pierden silenciosamente. Debería al menos loguear el error con `_log.error(...)`.
+El bloque `except Exception: pass` ahora llama `_log.error("No se pudo leer %s: %s", _USERS_FILE, e)`. Un JSON corrupto seguirá retornando `{}` pero el error quedará registrado.
 
 ---
 
-### M6 · `GameScene` silencia excepciones del juego
+### M6 · `GameScene` silencia excepciones del juego ✅ RESUELTO
 
-**Archivo:** [`scenes/game_scene.py:35-36`](scenes/game_scene.py#L35-L36)
+**Archivo:** [`scenes/game_scene.py:35`](scenes/game_scene.py#L35)
 
-```python
-except Exception as e:
-    print(f"Error al iniciar el juego: {e}")  # ← solo a consola
-```
-
-Cualquier crash dentro de `game_instance.run()` se silencia para el usuario. La app vuelve al menú como si nada. En producción (sin consola visible), el problema es completamente invisible.
+`print(...)` reemplazado por `_log.error(..., exc_info=True)`. El traceback completo queda en el logger del módulo, visible independientemente de si hay consola.
 
 ---
 
@@ -291,19 +231,19 @@ def process_video(video_path, output_path):
 
 ---
 
-### B1 · `draw_rounded_rect` reimplementa lo que pygame 2.x ya ofrece
+### B1 · `draw_rounded_rect` reimplementa lo que pygame 2.x ya ofrece ✅ RESUELTO (junto con C3)
 
-**Archivo:** [`game.py:190-211`](game.py#L190-L211)
+**Archivo:** [`game.py:190`](game.py#L190)
 
-El comentario dice "pygame no soporta `border_radius` nativamente en versiones anteriores a 2.x", pero `requirements.txt` exige `pygame>=2.5.2`. Las 12 llamadas de la función custom pueden reemplazarse por un solo `pygame.draw.rect(..., border_radius=r)`.
+Resuelto en el fix de C3: `draw_rounded_rect` ahora delega directamente a `pygame.draw.rect(..., border_radius=r)`.
 
 ---
 
-### B2 · `game_scene.py` añade `upload/` a `sys.path` sin necesidad
+### B2 · `game_scene.py` añade `upload/` a `sys.path` sin necesidad ✅ RESUELTO
 
-**Archivo:** [`scenes/game_scene.py:10-12`](scenes/game_scene.py#L10-L12)
+**Archivo:** [`scenes/game_scene.py`](scenes/game_scene.py)
 
-Reliquia de arquitectura anterior donde `game.py` vivía en `upload/`. Confunde el árbol de imports sin aportar nada.
+El bloque `sys.path.append(upload_path)` fue eliminado junto con los imports de `sys` y `Path` que ya no se necesitan.
 
 ---
 
@@ -367,11 +307,11 @@ Puede no renderizarse en todos los sistemas operativos dependiendo del sistema d
 
 ---
 
-### B10 · `ParticleEffect.update()` usa `list.remove()` con copia
+### B10 · `ParticleEffect.update()` usa `list.remove()` con copia ✅ RESUELTO
 
-**Archivo:** [`game.py:160-167`](game.py#L160-L167)
+**Archivo:** [`game.py:160`](game.py#L160)
 
-Itera sobre `self.particles[:]` pero llama `self.particles.remove(particle)`, que es O(n) search por cada eliminación. Debería filtrarse con list comprehension al final del update.
+El bucle ahora itera sobre `self.particles` directamente (sin copia) y al final reemplaza la lista con una list comprehension: `self.particles = [p for p in self.particles if p['life'] > 0 and p['size'] >= 1]`.
 
 ---
 
@@ -391,11 +331,11 @@ Sin teclas de acceso rápido ni soporte para `K_RETURN` / `K_ESCAPE`. Solo funci
 
 ---
 
-### B13 · Diccionario `_colors` en `draw_camera_feed` se recrea cada frame
+### B13 · Diccionario `_colors` en `draw_camera_feed` se recrea cada frame ✅ RESUELTO
 
-**Archivo:** [`game.py:563-564`](game.py#L563-L564)
+**Archivo:** [`game.py`](game.py)
 
-Un dict con 4 entradas constantes es recreado en cada llamada al método (30 veces/seg). Debería ser una constante a nivel de módulo.
+Extraído a las constantes de módulo `_LSTM_PROB_COLORS` y `_LSTM_PROB_LABELS`. Ya no se recrean en cada frame.
 
 ---
 

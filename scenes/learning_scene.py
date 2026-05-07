@@ -1,3 +1,4 @@
+import threading
 import pygame
 import cv2
 import numpy as np
@@ -36,6 +37,8 @@ class LearningScene(BaseScene):
         self.sign_type = "vowel"         # "vowel"  | "dynamic"
         self.selected_sign = None        # clave interna, ej. 'A' o 'hola'
         self._loading_step = 0           # control de pantalla de carga
+        self._loading_thread = None      # hilo de carga LSTM
+        self._loading_done = False       # señal de finalización
 
         # ── Cámara ────────────────────────────────────────────────────
         self.cap = None
@@ -169,9 +172,16 @@ class LearningScene(BaseScene):
     def update(self):
         if self.state == "loading":
             self._loading_step += 1
-            if self._loading_step >= 2:   # al menos un frame de pantalla de carga
-                lstm_detector.initialize()
-                lstm_detector.reset()
+            if self._loading_step == 2 and self._loading_thread is None:
+                self._loading_done = False
+                def _load():
+                    lstm_detector.initialize()
+                    lstm_detector.reset()
+                    self._loading_done = True
+                self._loading_thread = threading.Thread(target=_load, daemon=True)
+                self._loading_thread.start()
+            if self._loading_done:
+                self._loading_thread = None
                 self._lstm_frame_count = 0
                 self._last_lstm_class = None
                 self._last_lstm_conf = 0.0
@@ -432,6 +442,12 @@ class LearningScene(BaseScene):
     def _start_camera(self):
         if self.cap is None:
             self.cap = cv2.VideoCapture(0)
+            if not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(1)
+            if not self.cap.isOpened():
+                print("Advertencia: no se pudo abrir ninguna cámara.")
+                self.cap = None
+                return
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 

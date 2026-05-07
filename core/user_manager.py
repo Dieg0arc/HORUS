@@ -19,8 +19,8 @@ class UserManager:
             try:
                 with open(_USERS_FILE, encoding="utf-8") as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                _log.error("No se pudo leer %s: %s", _USERS_FILE, e)
         return {}
 
     def _save(self):
