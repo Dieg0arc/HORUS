@@ -37,7 +37,6 @@ from collections import deque, Counter
 from core.detector import detector
 from core.lstm_detector import lstm_detector
 from core.config import DETECTION_CONFIG, DYNAMIC_SIGNS, SIGN_DISPLAY_NAMES, LSTM_CONFIG
-import os
 
 # Inicializar Pygame solo si se ejecuta directamente
 if __name__ == "__main__":
@@ -335,7 +334,7 @@ class SignLanguageGame:
         self.model = detector.model
 
         # ── Variables del juego ──
-        self.all_signs = ['A', 'E', 'I', 'O', 'U', 'hola', 'hola_mundo', 'buenos_dias']
+        self.all_signs = ['A', 'E', 'I', 'O', 'U'] + DYNAMIC_SIGNS
         self.puntuacion = 0
         self.mejor_puntuacion = 0
         self.tiempo_preparacion = 5.0
@@ -346,10 +345,10 @@ class SignLanguageGame:
         self.evaluado = False
 
         # ── Buffer para detecciones ──
-        self.detections_deque = deque(maxlen=15)
+        self.detections_deque = deque(maxlen=DETECTION_CONFIG['detections_buffer'])
         self.feedback_start = None
         self.feedback_duracion = 3.0
-        self.CONF_THRESHOLD = 0.40
+        self.CONF_THRESHOLD = DETECTION_CONFIG['conf_threshold']
 
         # ── LSTM ──
         self._lstm_frame_count = 0
@@ -485,7 +484,7 @@ class SignLanguageGame:
         else:
             if not self.evaluado:
                 clases_validas = [d for d in self.detections_deque if d is not None]
-                min_votes = LSTM_CONFIG['min_votes'] if is_dynamic else 3
+                min_votes = LSTM_CONFIG['min_votes'] if is_dynamic else DETECTION_CONFIG['min_votes']
 
                 if len(clases_validas) == 0:
                     self.mensaje_feedback = "❌ No se detectó la seña claramente"
@@ -555,6 +554,27 @@ class SignLanguageGame:
             return
 
         frame_copy = frame.copy()
+
+        # Barras de probabilidad LSTM superpuestas en el frame
+        is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+        if is_dynamic and lstm_detector._initialized and lstm_detector.buffer_progress >= 1.0:
+            probs = lstm_detector.last_probs
+            labels = lstm_detector.labels
+            _colors = {'buenos_dias': (255,200,100), 'hola': (100,200,50),
+                       'hola_mundo': (255,100,150), 'no_sena': (100,100,255)}
+            _disp = {'buenos_dias':'B.Dias','hola':'Hola','hola_mundo':'H.Mundo','no_sena':'No seña'}
+            bar_max_w = 200
+            for i, (lbl, prob) in enumerate(zip(labels, probs)):
+                y0 = 10 + i * 44
+                y1 = y0 + 36
+                col = _colors.get(lbl, (200, 200, 200))
+                cv2.rectangle(frame_copy, (0, y0), (bar_max_w, y1), (40, 40, 60), -1)
+                filled = int(bar_max_w * float(prob))
+                if filled > 0:
+                    cv2.rectangle(frame_copy, (0, y0), (filled, y1), col, -1)
+                cv2.putText(frame_copy, f"{_disp.get(lbl,lbl)}: {prob:.0%}",
+                            (4, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                            (255, 255, 255), 1, cv2.LINE_AA)
 
         # Dibujar bounding box si existe una detección
         if detected_box is not None:
@@ -751,82 +771,83 @@ class SignLanguageGame:
         """
         running = True
 
-        while running:
-            # Manejar eventos
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_q:
-                        running = False
-                    elif event.key == pygame.K_r:
-                        # Reiniciar juego
-                        self.puntuacion = 0
-                        self.vocal_actual = random.choice(self.all_signs)
-                        if self.vocal_actual in DYNAMIC_SIGNS:
-                            lstm_detector.initialize()
-                            lstm_detector.reset()
-                            self._lstm_frame_count = 0
-                        self.tiempo_inicio = time.time()
-                        self.detections_deque.clear()
-
-            # Capturar frame (siempre necesario para mostrar cámara)
-            ret, frame = self.cap.read()
-            if not ret:
-                frame = None
-
-            is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
-
-            if is_dynamic:
-                # ── Detección LSTM ──
-                self._lstm_frame_count += 1
-                detected_box = None
-                if frame is not None and self._lstm_frame_count % LSTM_CONFIG['skip_frames'] == 0:
-                    detected_class, detected_conf = lstm_detector.process_frame(frame)
-                else:
-                    detected_class, detected_conf = None, 0.0
-            else:
-                # ── Detección YOLO ──
-                if self.frame_count % DETECTION_CONFIG['skip_frames'] == 0:
-                    if frame is not None:
-                        detected_class, detected_conf, detected_box = detector.predict(frame)
-                    else:
-                        detected_class, detected_conf, detected_box = None, 0.0, None
-                    self.last_detected = (frame, detected_class, detected_conf, detected_box)
-                else:
-                    frame, detected_class, detected_conf, detected_box = self.last_detected
-
-            self.frame_count += 1
-
-            # Actualizar lógica del juego
-            tiempo_restante = self.update_game_logic(detected_class, detected_conf)
-
-            # Limpiar pantalla
-            screen.fill(COLORS['background'])
-
-            # Dibujar UI
-            self.draw_ui(screen, tiempo_restante)
-
-            # Dibujar feed de cámara
-            self.draw_camera_feed(screen, frame, detected_box, detected_class, detected_conf)
-
-            # Actualizar pantalla
-            pygame.display.flip()
-            self.clock.tick(30)  # 30 FPS
-
-        # Limpieza de recursos
-        self.cap.release()
-        lstm_detector.close()
-        
-        # Guardar progreso antes de salir
         try:
-            from core.user_manager import user_manager
-            user_manager.update_stats(self.puntuacion)
-        except Exception as e:
-            print(f"Error al guardar progreso: {e}")
+            while running:
+                # Manejar eventos
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_q:
+                            running = False
+                        elif event.key == pygame.K_r:
+                            # Reiniciar juego
+                            self.puntuacion = 0
+                            self.vocal_actual = random.choice(self.all_signs)
+                            if self.vocal_actual in DYNAMIC_SIGNS:
+                                lstm_detector.initialize()
+                                lstm_detector.reset()
+                                self._lstm_frame_count = 0
+                            self.tiempo_inicio = time.time()
+                            self.detections_deque.clear()
 
-        if __name__ == "__main__":
-            pygame.quit()
+                # Capturar frame (siempre necesario para mostrar cámara)
+                ret, frame = self.cap.read()
+                if not ret:
+                    frame = None
+
+                is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+
+                if is_dynamic:
+                    # ── Detección LSTM ──
+                    self._lstm_frame_count += 1
+                    detected_box = None
+                    if frame is not None and self._lstm_frame_count % LSTM_CONFIG['skip_frames'] == 0:
+                        detected_class, detected_conf = lstm_detector.process_frame(frame)
+                    else:
+                        detected_class, detected_conf = None, 0.0
+                else:
+                    # ── Detección YOLO ──
+                    if self.frame_count % DETECTION_CONFIG['skip_frames'] == 0:
+                        if frame is not None:
+                            detected_class, detected_conf, detected_box = detector.predict(frame)
+                        else:
+                            detected_class, detected_conf, detected_box = None, 0.0, None
+                        self.last_detected = (frame, detected_class, detected_conf, detected_box)
+                    else:
+                        frame, detected_class, detected_conf, detected_box = self.last_detected
+
+                self.frame_count += 1
+
+                # Actualizar lógica del juego
+                tiempo_restante = self.update_game_logic(detected_class, detected_conf)
+
+                # Limpiar pantalla
+                screen.fill(COLORS['background'])
+
+                # Dibujar UI
+                self.draw_ui(screen, tiempo_restante)
+
+                # Dibujar feed de cámara
+                self.draw_camera_feed(screen, frame, detected_box, detected_class, detected_conf)
+
+                # Actualizar pantalla
+                pygame.display.flip()
+                self.clock.tick(30)  # 30 FPS
+
+        finally:
+            # Limpieza garantizada incluso si ocurre una excepción
+            self.cap.release()
+            lstm_detector.close()
+
+            try:
+                from core.user_manager import user_manager
+                user_manager.update_stats(self.puntuacion)
+            except Exception as e:
+                print(f"Error al guardar progreso: {e}")
+
+            if __name__ == "__main__":
+                pygame.quit()
 
 
 if __name__ == "__main__":

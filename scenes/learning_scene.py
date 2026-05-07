@@ -1,7 +1,7 @@
 import pygame
 import cv2
 import numpy as np
-import os
+from collections import deque
 from scenes.base_scene import BaseScene
 from core.config import (
     COLORS, WIDTH, HEIGHT, VOWEL_IMAGES, DETECTION_CONFIG,
@@ -53,6 +53,9 @@ class LearningScene(BaseScene):
         self._lstm_frame_count = 0
         self._last_lstm_class = None
         self._last_lstm_conf = 0.0
+
+        # ── Suavizado temporal YOLO (M11) ─────────────────────────────
+        self._yolo_vote_buf = deque(maxlen=5)
 
         # ── UI — tabs ─────────────────────────────────────────────────
         self.tab_vowels_rect = pygame.Rect(_TAB_VOWELS_X, _TAB_Y, _TAB_W, _TAB_H)
@@ -191,20 +194,31 @@ class LearningScene(BaseScene):
         else:
             self._update_lstm(frame)
 
-        # Convertir frame para mostrar en pantalla
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb = cv2.resize(rgb, (320, 240))
+        # Convertir frame para mostrar en pantalla (resize primero → cvtColor sobre array más pequeño)
+        rgb = cv2.resize(frame, (320, 240))
+        rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+
+        # Barras de probabilidad LSTM superpuestas en el frame
+        if self.sign_type == "dynamic" and lstm_detector.buffer_progress >= 1.0:
+            self._draw_prob_bars_on_frame(rgb)
+
         surf = pygame.surfarray.make_surface(np.rot90(rgb))
         self.cam_surface = pygame.transform.flip(surf, True, False)
 
     def _update_yolo(self, frame):
         if self.frame_count % DETECTION_CONFIG['skip_frames'] != 0:
             return
-        detected_class, conf, _ = detector.predict(frame)
-        if detected_class is None:
+        detected_class, _, _ = detector.predict(frame)
+        self._yolo_vote_buf.append(detected_class)
+
+        valid = [c for c in self._yolo_vote_buf if c is not None]
+        if not valid:
             self.feedback_msg = "Buscando seña..."
             self.feedback_color = COLORS['warning']
-        elif detected_class.upper() == self.selected_sign.upper():
+            return
+
+        smoothed = max(set(valid), key=valid.count)
+        if smoothed.upper() == self.selected_sign.upper():
             self.feedback_msg = "Correcto ✅"
             self.feedback_color = COLORS['success']
         else:
@@ -347,6 +361,33 @@ class LearningScene(BaseScene):
         lbl = self.font_small.render("Video próximamente", True, COLORS['dark_gray'])
         screen.blit(lbl, lbl.get_rect(center=(rect.centerx, rect.centery + 30)))
 
+    def _draw_prob_bars_on_frame(self, rgb_frame):
+        """Dibuja barras de probabilidad LSTM sobre el frame RGB (estilo standalone PDF)."""
+        if not lstm_detector._initialized:
+            return
+        probs = lstm_detector.last_probs
+        labels = lstm_detector.labels
+        colors_bgr = {
+            'buenos_dias': (255, 200, 100),
+            'hola':        (100, 200, 50),
+            'hola_mundo':  (255, 100, 150),
+            'no_sena':     (100, 100, 255),
+        }
+        display = {'buenos_dias': 'B.Dias', 'hola': 'Hola',
+                   'hola_mundo': 'H.Mundo', 'no_sena': 'No seña'}
+        bar_max_w = 180
+        for i, (label, prob) in enumerate(zip(labels, probs)):
+            y0 = 10 + i * 38
+            y1 = y0 + 30
+            color = colors_bgr.get(label, (200, 200, 200))
+            cv2.rectangle(rgb_frame, (0, y0), (bar_max_w, y1), (40, 40, 60), -1)
+            filled = int(bar_max_w * float(prob))
+            if filled > 0:
+                cv2.rectangle(rgb_frame, (0, y0), (filled, y1), color, -1)
+            cv2.putText(rgb_frame, f"{display.get(label, label)}: {prob:.0%}",
+                        (4, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                        (255, 255, 255), 1, cv2.LINE_AA)
+
     def _draw_lstm_progress(self, screen):
         progress = lstm_detector.buffer_progress
         bar_w, bar_h = 400, 14
@@ -363,16 +404,30 @@ class LearningScene(BaseScene):
     # Helpers internos
     # ══════════════════════════════════════════════════════════════════
 
+    _ALLOWED_IMAGE_EXTS = {'.jpeg', '.jpg', '.png', '.bmp', '.gif'}
+    _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
     def _load_vowel_image(self, vowel):
         path = VOWEL_IMAGES.get(vowel)
-        if path and os.path.exists(path):
-            try:
-                img = pygame.image.load(path)
-                self.vowel_image = pygame.transform.scale(img, (300, 300))
-                return
-            except pygame.error:
-                pass
-        self.vowel_image = None
+        if not path:
+            self.vowel_image = None
+            return
+        from pathlib import Path as _Path
+        p = _Path(path)
+        if not p.exists():
+            self.vowel_image = None
+            return
+        if p.suffix.lower() not in self._ALLOWED_IMAGE_EXTS:
+            self.vowel_image = None
+            return
+        if p.stat().st_size > self._MAX_IMAGE_BYTES:
+            self.vowel_image = None
+            return
+        try:
+            img = pygame.image.load(str(p))
+            self.vowel_image = pygame.transform.scale(img, (300, 300))
+        except pygame.error:
+            self.vowel_image = None
 
     def _start_camera(self):
         if self.cap is None:

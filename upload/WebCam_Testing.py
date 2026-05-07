@@ -31,16 +31,16 @@ cap = cv2.VideoCapture(0)
 """cv2.VideoCapture: Objeto de captura de video desde la cámara web (índice 0)."""
 
 if not cap.isOpened():
-    print("Error: Could not open webcam.")
+    print("Error: No se pudo abrir la cámara web.")
     exit()
 
 # ── Cargar modelo YOLO ──
 # Intentar localizar el modelo relativo al script
 current_dir = os.path.dirname(os.path.abspath(__file__))
 possible_paths = [
+    os.path.join(current_dir, "..", "runs", "segment", "vocales-2", "weights", "best.pt"),
     os.path.join(current_dir, "..", "..", "train", "best.pt"),
     os.path.join(current_dir, "best.pt"),
-    r"C:\Users\Asus\Desktop\U\Semillero\train\best.pt"
 ]
 """list[str]: Rutas posibles donde buscar el modelo ``best.pt``."""
 
@@ -63,7 +63,7 @@ while True:
     ret, frame = cap.read()
 
     if not ret:
-        print("Error: Could not read frame.")
+        print("Error: No se pudo leer el frame de la cámara.")
         break
 
     # Ejecutar predicción YOLO sobre el frame capturado
