@@ -65,7 +65,7 @@ class LoginScene(BaseScene):
         
         # Cursor
         if self.cursor_visible:
-            cursor_x = name_rect.right + 5 if self.user_name else self.input_rect.centerx
+            cursor_x = name_rect.right + 5 if self.user_name else self.input_rect.left + 12
             pygame.draw.line(screen, COLORS['white'], (cursor_x, self.input_rect.centery - 20), (cursor_x, self.input_rect.centery + 20), 2)
             
         # Botón Continuar (Usando helper)

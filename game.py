@@ -38,6 +38,7 @@ from core.detector import detector
 from core.lstm_detector import lstm_detector
 from core.config import COLORS, DETECTION_CONFIG, DYNAMIC_SIGNS, SIGN_DISPLAY_NAMES, LSTM_CONFIG
 from core.user_manager import user_manager
+from core.draw_utils import draw_lstm_prob_bars
 
 # Inicializar Pygame solo si se ejecuta directamente
 if __name__ == "__main__":
@@ -53,12 +54,11 @@ WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 """int: Alto de la ventana del juego en píxeles."""
 
+screen = None  # se resuelve en run() para evitar captura prematura al importar
+
 if __name__ == "__main__":
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("🤟 Aprende Lenguaje de Señas - Juego Interactivo")
-else:
-    # Si viene del Scene Manager, usamos la superficie ya existente
-    screen = pygame.display.get_surface()
+    pygame.display.set_caption("Aprende Lenguaje de Señas - Juego Interactivo")
 
 # Fuentes tipográficas
 font_large = pygame.font.Font(None, 48)
@@ -72,19 +72,6 @@ font_small = pygame.font.Font(None, 24)
 
 font_title = pygame.font.Font(None, 64)
 """pygame.font.Font: Fuente de título (64pt) para el nombre del juego y la letra objetivo."""
-
-_LSTM_PROB_COLORS = {
-    'buenos_dias': (255, 200, 100),
-    'hola': (100, 200, 50),
-    'hola_mundo': (255, 100, 150),
-    'no_sena': (100, 100, 255),
-}
-_LSTM_PROB_LABELS = {
-    'buenos_dias': 'B.Dias',
-    'hola': 'Hola',
-    'hola_mundo': 'H.Mundo',
-    'no_sena': 'No seña',
-}
 
 
 class ParticleEffect:
@@ -161,25 +148,31 @@ class ParticleEffect:
             particle['size'] *= 0.98
         self.particles = [p for p in self.particles if p['life'] > 0 and p['size'] >= 1]
 
+    # Superficie reutilizable para alpha blending de partículas (tamaño máximo posible)
+    _MAX_PARTICLE_SIZE = 6   # ceil(random.uniform(2,5) * 1.0) al momento de creación
+    _particle_surf = None
+
     def draw(self, surface):
         """Dibuja todas las partículas activas sobre la superficie dada.
 
-        Utiliza alpha blending mediante superficies temporales para
-        lograr el efecto de desvanecimiento progresivo.
+        Reutiliza una única superficie SRCALPHA para el alpha blending,
+        evitando 600 allocations/seg durante efectos de éxito/error.
 
         Args:
             surface (pygame.Surface): Superficie sobre la cual dibujar
                 las partículas.
         """
+        if ParticleEffect._particle_surf is None:
+            dim = ParticleEffect._MAX_PARTICLE_SIZE * 2 + 2
+            ParticleEffect._particle_surf = pygame.Surface((dim, dim), pygame.SRCALPHA)
+
+        ps = ParticleEffect._particle_surf
         for particle in self.particles:
-            alpha = max(0, particle['life'] / 60.0 * 255)
-            # Crear superficie temporal para alpha blending
-            temp_surface = pygame.Surface((int(particle['size'] * 2), int(particle['size'] * 2)))
-            temp_surface.set_alpha(int(alpha))
-            pygame.draw.circle(temp_surface, particle['color'],
-                             (int(particle['size']), int(particle['size'])),
-                             int(particle['size']))
-            surface.blit(temp_surface, (particle['x'] - particle['size'], particle['y'] - particle['size']))
+            alpha = max(0, int(particle['life'] / 60.0 * 255))
+            r_int = int(particle['size'])
+            ps.fill((0, 0, 0, 0))
+            pygame.draw.circle(ps, (*particle['color'], alpha), (r_int, r_int), r_int)
+            surface.blit(ps, (int(particle['x']) - r_int, int(particle['y']) - r_int))
 
 
 def draw_rounded_rect(surface, color, rect, radius=20):
@@ -189,11 +182,14 @@ def draw_rounded_rect(surface, color, rect, radius=20):
         pygame.draw.rect(surface, color, (x, y, w, h), border_radius=r)
 
 
+_gradient_cache: dict = {}
+
+
 def draw_gradient_rect(surface, color1, color2, rect):
     """Dibuja un rectángulo con un gradiente vertical de dos colores.
 
-    Interpola linealmente entre ``color1`` (arriba) y ``color2`` (abajo),
-    dibujando una línea horizontal por cada fila de píxeles.
+    La superficie del gradiente se genera la primera vez y se reutiliza
+    en llamadas posteriores con los mismos parámetros (O(1) por frame).
 
     Args:
         surface (pygame.Surface): Superficie sobre la cual dibujar.
@@ -202,12 +198,17 @@ def draw_gradient_rect(surface, color1, color2, rect):
         rect (tuple[int, int, int, int]): Tupla ``(x, y, ancho, alto)``.
     """
     x, y, w, h = rect
-    for i in range(h):
-        ratio = i / h
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (x, y + i), (x + w, y + i))
+    key = (color1, color2, w, h)
+    if key not in _gradient_cache:
+        grad_surf = pygame.Surface((w, h))
+        for i in range(h):
+            ratio = i / h
+            r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+            g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+            b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+            pygame.draw.line(grad_surf, (r, g, b), (0, i), (w, i))
+        _gradient_cache[key] = grad_surf
+    surface.blit(_gradient_cache[key], (x, y))
 
 
 def draw_progress_bar(surface, x, y, width, height, progress, color):
@@ -283,8 +284,6 @@ class SignLanguageGame:
         feedback_start (float | None): Timestamp del inicio del feedback,
             o ``None`` si no hay feedback activo.
         feedback_duracion (float): Duración en segundos del mensaje de feedback.
-        CONF_THRESHOLD (float): Umbral mínimo de confianza para aceptar
-            una detección YOLO.
         cap (cv2.VideoCapture): Objeto de captura de video.
         particles (ParticleEffect): Sistema de partículas para efectos visuales.
         pulse_time (float): Acumulador para la animación de pulso de la letra.
@@ -326,8 +325,6 @@ class SignLanguageGame:
         self.detections_deque = deque(maxlen=DETECTION_CONFIG['detections_buffer'])
         self.feedback_start = None
         self.feedback_duracion = 3.0
-        self.CONF_THRESHOLD = DETECTION_CONFIG['conf_threshold']
-
         # ── LSTM ──
         self._lstm_frame_count = 0
         if self.vocal_actual in DYNAMIC_SIGNS:
@@ -414,7 +411,7 @@ class SignLanguageGame:
         """
         # Añadir detección al buffer (filtrar no_sena en señas dinámicas)
         is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
-        threshold = LSTM_CONFIG['confidence_threshold'] if is_dynamic else self.CONF_THRESHOLD
+        threshold = LSTM_CONFIG['confidence_threshold'] if is_dynamic else DETECTION_CONFIG['conf_threshold']
 
         if (detected_class is not None
                 and detected_conf >= threshold
@@ -511,28 +508,18 @@ class SignLanguageGame:
 
         frame_copy = frame.copy()
 
-        # Barras de probabilidad LSTM superpuestas en el frame
         is_dynamic = self.vocal_actual in DYNAMIC_SIGNS
+        if is_dynamic and lstm_detector._initialized:
+            lstm_detector.draw_landmarks(frame_copy)
+
+        # Barras de probabilidad LSTM superpuestas en el frame
         if is_dynamic and lstm_detector._initialized and lstm_detector.buffer_progress >= 1.0:
-            probs = lstm_detector.last_probs
-            labels = lstm_detector.labels
-            bar_max_w = 200
-            for i, (lbl, prob) in enumerate(zip(labels, probs)):
-                y0 = 10 + i * 44
-                y1 = y0 + 36
-                col = _LSTM_PROB_COLORS.get(lbl, (200, 200, 200))
-                cv2.rectangle(frame_copy, (0, y0), (bar_max_w, y1), (40, 40, 60), -1)
-                filled = int(bar_max_w * float(prob))
-                if filled > 0:
-                    cv2.rectangle(frame_copy, (0, y0), (filled, y1), col, -1)
-                cv2.putText(frame_copy, f"{_LSTM_PROB_LABELS.get(lbl, lbl)}: {prob:.0%}",
-                            (4, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
-                            (255, 255, 255), 1, cv2.LINE_AA)
+            draw_lstm_prob_bars(frame_copy, lstm_detector.labels, lstm_detector.last_probs, bar_max_w=200)
 
         # Dibujar bounding box si existe una detección
         if detected_box is not None:
             x1, y1, x2, y2 = detected_box
-            color = (0, 255, 0) if detected_conf >= self.CONF_THRESHOLD else (255, 255, 0)
+            color = (0, 255, 0) if detected_conf >= DETECTION_CONFIG['conf_threshold'] else (255, 255, 0)
             cv2.rectangle(frame_copy, (x1, y1), (x2, y2), color, 3)
 
             # Etiqueta con fondo
@@ -718,6 +705,10 @@ class SignLanguageGame:
         4. Renderiza la UI y el feed de la cámara.
         5. Al salir, libera la cámara y cierra Pygame.
         """
+        global screen
+        if screen is None:
+            screen = pygame.display.get_surface()
+
         running = True
 
         try:

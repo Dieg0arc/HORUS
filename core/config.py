@@ -60,7 +60,6 @@ DYNAMIC_SIGNS = ['hola', 'hola_mundo', 'buenos_dias']
 
 # Nombre visual de cada seña (vocales + dinámicas)
 SIGN_DISPLAY_NAMES = {
-    'A': 'A', 'E': 'E', 'I': 'I', 'O': 'O', 'U': 'U',
     'hola': 'Hola',
     'hola_mundo': 'Hola Mundo',
     'buenos_dias': 'Buenos Días',
@@ -68,7 +67,7 @@ SIGN_DISPLAY_NAMES = {
 
 # Configuración del detector LSTM
 LSTM_CONFIG = {
-    'confidence_threshold': 0.65,
-    'min_votes': 2,       # mínimo de predicciones correctas para aprobar
+    'confidence_threshold': 0.80,  # subido de 0.65 → menos falsos positivos
+    'min_votes': 3,       # mínimo de predicciones correctas para aprobar (20% de 15 frames)
     'skip_frames': 2,     # procesar 1 de cada N frames con MediaPipe
 }

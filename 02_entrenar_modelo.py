@@ -58,8 +58,15 @@ def load_data():
         raise RuntimeError("No se encontro ninguna secuencia valida. Asegurate de haber ejecutado 01_extraer_keypoints.py y que haya .npy de 30 frames.")
 
     X = np.array(X, dtype=np.float32)
-    y = tf.keras.utils.to_categorical(y, num_classes=len(labels))
-    return X, y, labels
+    y_arr = np.array(y)
+
+    # Mezclar antes de devolver para que validation_split sea estratificado
+    perm = np.random.permutation(len(X))
+    X = X[perm]
+    y_arr = y_arr[perm]
+
+    y_cat = tf.keras.utils.to_categorical(y_arr, num_classes=len(labels))
+    return X, y_cat, labels
 
 
 def build_model(input_shape, n_classes):
