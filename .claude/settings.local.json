@@ -5,7 +5,32 @@
       "Bash(python 02_entrenar_modelo.py)",
       "Bash(python -c ' *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Read(//c/Users/Diego/OneDrive/Documentos/Universidad/**)",
+      "Bash(best\")",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(py --version 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Diego\\\\Desktop\" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match \"action|best\" })",
+      "PowerShell(cmd /c dir \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\" /a)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Programs\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"C:\\\\Program Files\" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match \"Python\" } | Select-Object Name)",
+      "PowerShell(cmd /c where python 2>&1)",
+      "PowerShell(cmd /c dir \"C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Programs\" 2>&1)",
+      "PowerShell(python --version)",
+      "PowerShell(cmd /c python --version 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python311\\\\python.exe\" --version)",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python311\\\\python.exe\" -m venv \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\venv\")",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\venv\\\\Scripts\\\\python.exe\" -m pip install --upgrade pip)",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\venv\\\\Scripts\\\\pip.exe\" install -r \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\requirements.txt\")",
+      "PowerShell(cmd /c \"dir \"\"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\ai\\\\sign_language\\\\\"\" & dir \"\"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\runs\\\\segment\\\\vocales-2\\\\weights\\\\\"\"\")",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\venv\\\\Scripts\\\\python.exe\" \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\main.py\")",
+      "PowerShell(& \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\venv\\\\Scripts\\\\python.exe\" \"C:\\\\Users\\\\Diego\\\\OneDrive\\\\Documentos\\\\Universidad\\\\Semillero\\\\HORUS\\\\main.py\" 2>&1)",
+      "Bash(python game.py)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import ast, os; imports=set\\(\\); [imports.update\\(n.names[0].name.split\\('.'\\)[0] if isinstance\\(n,ast.Import\\) else n.module.split\\('.'\\)[0] if n.module else '' for f in ['game.py']+[os.path.join\\(r,x\\) for r,d,fs in os.walk\\('.'\\) for x in fs if x.endswith\\('.py'\\)] for n in ast.walk\\(ast.parse\\(open\\(f\\).read\\(\\)\\)\\) if isinstance\\(n,\\(ast.Import,ast.ImportFrom\\)\\)\\)]; print\\('\\\\n'.join\\(sorted\\(imports-{'','__future__'}\\)\\)\\)\")",
+      "Bash(python -c \"import os; print\\('best.pt:', os.path.exists\\('runs/segment/vocales-2/weights/best.pt'\\)\\); print\\('action.h5:', os.path.exists\\('ai/sign_language/action.h5'\\)\\); print\\('labels.json:', os.path.exists\\('ai/sign_language/labels.json'\\)\\); print\\('main.py:', os.path.exists\\('main.py'\\)\\)\")",
+      "Bash(python main.py)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Diego-OneDrive-Documentos-Universidad-Semillero-HORUS\\\\6c229d2a-c631-42d5-823c-de0ac817b1a1\\\\tasks\\\\bg4anjeh7.output\" -ErrorAction SilentlyContinue)",
+      "Bash(venv\\\\Scripts\\\\python.exe main.py)"
     ]
   }
 }

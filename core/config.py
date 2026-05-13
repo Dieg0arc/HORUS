@@ -1,15 +1,21 @@
 from pathlib import Path
 
 # Dimensiones de la ventana
-WIDTH = 1200
+WIDTH  = 1200
 HEIGHT = 800
-FPS = 30
+FPS    = 30
 
-# Rutas de archivos
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Rutas base
+BASE_DIR   = Path(__file__).resolve().parent.parent
 VIDEO_PATH = BASE_DIR / "assets" / "videos" / "A-E-I-O-U.mp4"
 USERS_JSON_PATH = BASE_DIR / "users.json"
-IMAGE_DIR = BASE_DIR / "assets" / "images"
+IMAGE_DIR  = BASE_DIR / "assets" / "images"
+FONT_DIR   = BASE_DIR / "assets" / "fonts"
+
+# Fuentes — Orbitron si está descargada, fallback a pygame default
+FONT_REGULAR = str(FONT_DIR / "Orbitron-Regular.ttf") if (FONT_DIR / "Orbitron-Regular.ttf").exists() else None
+FONT_BOLD    = str(FONT_DIR / "Orbitron-Bold.ttf")    if (FONT_DIR / "Orbitron-Bold.ttf").exists()    else None
+FONT_MEDIUM  = str(FONT_DIR / "Orbitron-Medium.ttf")  if (FONT_DIR / "Orbitron-Medium.ttf").exists()  else FONT_REGULAR
 
 # Diccionario de imágenes de vocales
 VOWEL_IMAGES = {
@@ -20,54 +26,77 @@ VOWEL_IMAGES = {
     'U': IMAGE_DIR / "U.jpeg",
 }
 
-# Paleta de colores (Mantenida igual para consistencia visual)
+# ── Paleta futurista ───────────────────────────────────────────────────────────
 COLORS = {
-    'background': (20, 25, 40),
-    'card_bg': (45, 55, 80),
-    'primary': (100, 200, 255),
-    'secondary': (150, 100, 255),
-    'success': (50, 200, 100),
-    'error': (255, 100, 100),
-    'warning': (255, 200, 50),
-    'white': (255, 255, 255),
-    'light_gray': (200, 200, 200),
-    'dark_gray': (100, 100, 100),
-    'accent': (255, 150, 50)
+    # Fondos
+    'background': (8,  12, 24),       # Navy muy oscuro
+    'card_bg':    (13, 21, 37),       # Azul oscuro
+
+    # Acentos principales
+    'primary':    (0,  212, 255),     # Cyan neón
+    'secondary':  (139, 92, 246),     # Púrpura
+
+    # Semánticos
+    'success':    (0,  230, 118),     # Verde neón
+    'error':      (255, 68,  88),     # Rojo
+    'warning':    (255, 193,  7),     # Ámbar
+
+    # Texto
+    'white':      (200, 216, 255),    # Blanco azulado
+    'light_gray': (74,  96,  128),    # Gris-azul (muted)
+
+    # Bordes
+    'dark_gray':  (28,  42,  70),     # Borde oscuro
+
+    # Alias
+    'accent':     (139, 92, 246),
 }
 
-# Configuración Visual para Niños
+# ── Config UI ──────────────────────────────────────────────────────────────────
 UI_CONFIG = {
-    'font_name': None,
-    'font_size_large': 72,
-    'font_size_medium': 48,
-    'font_size_small': 32,
-    'button_radius': 25,
+    'font_regular':      FONT_REGULAR,
+    'font_bold':         FONT_BOLD,
+    'font_medium_path':  FONT_MEDIUM,
+
+    # Tamaños adaptados para Orbitron (fuente ancha)
+    'font_size_title':   48,
+    'font_size_large':   36,
+    'font_size_medium':  24,
+    'font_size_small':   17,
+    'font_size_label':   12,
+
+    # Mantener para compatibilidad heredada
+    'font_name':         FONT_REGULAR,
+    'font_size_large':   36,
+    'font_size_medium':  24,
+    'font_size_small':   17,
+
+    'button_radius': 0,          # Botones angulares
     'button_padding': 20,
-    'border_thickness': 4
+    'border_thickness': 1,
 }
 
-# Optimización del Detector YOLO
+# ── Detección YOLO ─────────────────────────────────────────────────────────────
 DETECTION_CONFIG = {
-    'img_size': 320,
-    'skip_frames': 2,
-    'conf_threshold': 0.70,
-    'min_votes': 3,           # mínimo de detecciones válidas para aceptar una seña vocal
-    'detections_buffer': 15,  # capacidad del buffer circular de detecciones en juego
+    'img_size':          320,
+    'skip_frames':       2,
+    'conf_threshold':    0.70,
+    'min_votes':         3,
+    'detections_buffer': 15,
 }
 
-# Señas dinámicas (reconocidas por el modelo LSTM)
+# ── Señas dinámicas ────────────────────────────────────────────────────────────
 DYNAMIC_SIGNS = ['hola', 'hola_mundo', 'buenos_dias']
 
-# Nombre visual de cada seña (vocales + dinámicas)
 SIGN_DISPLAY_NAMES = {
-    'hola': 'Hola',
-    'hola_mundo': 'Hola Mundo',
+    'hola':        'Hola',
+    'hola_mundo':  'Hola Mundo',
     'buenos_dias': 'Buenos Días',
 }
 
-# Configuración del detector LSTM
+# ── Detección LSTM ─────────────────────────────────────────────────────────────
 LSTM_CONFIG = {
-    'confidence_threshold': 0.80,  # subido de 0.65 → menos falsos positivos
-    'min_votes': 3,       # mínimo de predicciones correctas para aprobar (20% de 15 frames)
-    'skip_frames': 2,     # procesar 1 de cada N frames con MediaPipe
+    'confidence_threshold': 0.80,
+    'min_votes':            3,
+    'skip_frames':          2,
 }

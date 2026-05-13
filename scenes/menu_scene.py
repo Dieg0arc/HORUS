@@ -1,30 +1,33 @@
-import pygame
+"""scenes/menu_scene.py — Menú principal estilo HUD futurista."""
+
 import sys
+import pygame
 from scenes.base_scene import BaseScene
 from core.config import COLORS, WIDTH, HEIGHT
 from core.user_manager import user_manager
+
 
 class MenuScene(BaseScene):
     def __init__(self):
         super().__init__()
 
-        # Define buttons
-        button_width = 400
-        button_height = 100
-        spacing = 40
-        start_y = HEIGHT // 2 - 100
+        btn_w, btn_h = 320, 56
+        spacing      = 14
+        start_y      = HEIGHT // 2 - 50
 
         self.buttons = [
-            {"label": "Aprender", "rect": pygame.Rect(WIDTH // 2 - button_width // 2, start_y, button_width, button_height), "color": COLORS['primary'], "action": "learn", "hover": False},
-            {"label": "Jugar", "rect": pygame.Rect(WIDTH // 2 - button_width // 2, start_y + button_height + spacing, button_width, button_height), "color": COLORS['success'], "action": "play", "hover": False},
-            {"label": "Salir", "rect": pygame.Rect(WIDTH // 2 - button_width // 2, start_y + (button_height + spacing) * 2, button_width, button_height), "color": COLORS['error'], "action": "exit", "hover": False}
+            {"label": "01  APRENDER",  "rect": pygame.Rect(WIDTH // 2 - btn_w // 2, start_y,                     btn_w, btn_h), "color": COLORS['primary'],   "action": "learn",  "hover": False, "border_only": True},
+            {"label": "02  JUGAR",     "rect": pygame.Rect(WIDTH // 2 - btn_w // 2, start_y + (btn_h + spacing), btn_w, btn_h), "color": COLORS['primary'],   "action": "play",   "hover": False, "border_only": False},
+            {"label": "03  SALIR",     "rect": pygame.Rect(WIDTH // 2 - btn_w // 2, start_y + (btn_h + spacing) * 2, btn_w, btn_h), "color": COLORS['dark_gray'], "action": "exit",   "hover": False, "border_only": True},
         ]
-        self._selected_idx = 0
+        self._selected_idx = 1
+
+    # ── Eventos ───────────────────────────────────────────────────────────────
 
     def process_events(self, events):
-        mouse_pos = pygame.mouse.get_pos()
+        mouse = pygame.mouse.get_pos()
         for btn in self.buttons:
-            btn["hover"] = btn["rect"].collidepoint(mouse_pos)
+            btn["hover"] = btn["rect"].collidepoint(mouse)
 
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -52,22 +55,55 @@ class MenuScene(BaseScene):
             pygame.quit()
             sys.exit()
 
+    # ── Dibujo ────────────────────────────────────────────────────────────────
+
     def draw(self, screen):
         screen.fill(COLORS['background'])
-        
-        # Saludo al niño
-        user_name = user_manager.get_user_name()
-        welcome_text = self.font_large.render(f"¡Hola, {user_name}!", True, COLORS['white'])
-        welcome_rect = welcome_text.get_rect(center=(WIDTH // 2, 100))
-        # Sombra
-        screen.blit(self.font_large.render(f"¡Hola, {user_name}!", True, (10, 10, 20)), (welcome_rect.x + 4, welcome_rect.y + 4))
-        screen.blit(welcome_text, welcome_rect)
-        
-        sub_text = self.font_small.render("¿Qué quieres hacer hoy?", True, COLORS['light_gray'])
-        sub_rect = sub_text.get_rect(center=(WIDTH // 2, 170))
-        screen.blit(sub_text, sub_rect)
-        
-        # Dibujar botones usando helper (hover por mouse o selección por teclado)
+
+        # Scan line de fondo
+        self.draw_scan_line(screen, (0, 0, WIDTH, HEIGHT), COLORS['primary'], speed=3.5, alpha=18)
+
+        # HUD info bar superior
+        self._draw_top_bar(screen)
+
+        # Nombre del agente + bienvenida
+        self._draw_welcome(screen)
+
+        # Botones
         for i, btn in enumerate(self.buttons):
             is_active = btn["hover"] or (i == self._selected_idx)
-            self.draw_button(screen, btn["rect"], btn["label"], btn["color"], is_active)
+            color = COLORS['primary'] if is_active and btn["action"] != "exit" else btn["color"]
+            self.draw_button(screen, btn["rect"], btn["label"], color,
+                             hover=is_active,
+                             border_only=btn["border_only"])
+
+        # Indicador de sistema en la parte inferior
+        self._draw_bottom_bar(screen)
+
+    def _draw_top_bar(self, screen):
+        name  = user_manager.get_user_name()
+        best  = user_manager.get_best_score()
+        left  = self.font_label.render("HORUS v2.0", True, COLORS['light_gray'])
+        right = self.font_label.render(f"AGENTE: {name}   |   MEJOR: {best}", True, COLORS['light_gray'])
+        screen.blit(left,  (16, 14))
+        screen.blit(right, (WIDTH - right.get_width() - 16, 14))
+        # Línea separadora
+        pygame.draw.line(screen, COLORS['dark_gray'], (0, 36), (WIDTH, 36), 1)
+
+    def _draw_welcome(self, screen):
+        sub  = self.font_label.render("BIENVENIDO", True, COLORS['light_gray'])
+        name = user_manager.get_user_name()
+        big  = self.font_title.render(name.upper(), True, COLORS['primary'])
+        center_x = WIDTH // 2
+        # Posicionar arriba de los botones
+        btn_top = self.buttons[0]["rect"].top
+        big_y   = btn_top - big.get_height() - 20
+        sub_y   = big_y - sub.get_height() - 6
+        screen.blit(sub,  sub.get_rect(centerx=center_x, top=sub_y))
+        screen.blit(big,  big.get_rect(centerx=center_x, top=big_y))
+
+    def _draw_bottom_bar(self, screen):
+        pygame.draw.line(screen, COLORS['dark_gray'], (0, HEIGHT - 36), (WIDTH, HEIGHT - 36), 1)
+        if self.is_blink(0.8):
+            mod = self.font_label.render("MÓDULO DE DETECCIÓN · ACTIVO", True, COLORS['light_gray'])
+            screen.blit(mod, mod.get_rect(centerx=WIDTH // 2, centery=HEIGHT - 18))

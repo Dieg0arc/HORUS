@@ -1,7 +1,18 @@
-[
-  {
-    "name": "Diego",
-    "total_score": 5,
-    "games_played": 1
+{
+  "Diego": {
+    "best_score": 5,
+    "total_games": 1
+  },
+  "pepe": {
+    "best_score": 8,
+    "total_games": 6
+  },
+  "DIEGO": {
+    "best_score": 0,
+    "total_games": 6
+  },
+  "ANA": {
+    "best_score": 0,
+    "total_games": 4
   }
-]
+}
