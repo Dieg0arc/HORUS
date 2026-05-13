@@ -28,42 +28,23 @@ Autor:
 """
 
 from ultralytics import YOLO
-import torch
-import multiprocessing as mp
-
 
 def train_yolo_model():
-    """Entrena un modelo YOLO11s-seg con un dataset personalizado de señas.
+    """
+    Trains a YOLO model using the YOLOv8 medium pre-trained weights and a custom dataset.
 
-    El flujo de entrenamiento es el siguiente:
+    This function performs the following steps:
+    1. Loads the YOLOv8 medium pre-trained model.
+    2. Trains the model using the custom dataset specified in the "config.yaml" file.
+    3. Sets the training parameters including the number of epochs, image size, and batch size.
 
-    1. Carga el modelo preentrenado ``yolo11s-seg.pt``.
-    2. Detecta automáticamente si hay una GPU CUDA disponible.
-    3. Configura los hiperparámetros de entrenamiento:
-       - 100 épocas.
-       - Tamaño de imagen 640×640.
-       - Batch size de 16 (optimizado para GPUs con 4GB VRAM).
-       - 2 workers de multiprocessing (seguro en Windows).
-    4. Inicia el entrenamiento y guarda los pesos en el directorio del proyecto.
+    Parameters:
+    None
 
     Returns:
-        ultralytics.engine.results.Results: Objeto con métricas y resultados
-        del entrenamiento, incluyendo mAP, pérdidas y curvas de aprendizaje.
-
-    Raises:
-        FileNotFoundError: Si el archivo ``yolo11s-seg.pt`` o el dataset
-            ``data.yaml`` no se encuentran en las rutas especificadas.
-
-    Example:
-        >>> results = train_yolo_model()
-        >>> print(results.results_dict)
-
-    Note:
-        Las rutas del dataset y directorio de salida están configuradas
-        de forma absoluta para la máquina de desarrollo. Modificar según
-        sea necesario para otros entornos.
+    results: Training results containing metrics and information about the training process.
     """
-    # Cargar modelo preentrenado
+    # Load the YOLOv8 medium pre-trained model
     model = YOLO("yolo11s-seg.pt")
 
     # Detectar GPU o CPU automáticamente
@@ -85,8 +66,5 @@ def train_yolo_model():
 
     return results
 
-
-# Punto de entrada principal (necesario en Windows para multiprocessing)
-if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
-    train_yolo_model()
+# Call the function to train the YOLO model
+train_yolo_model()
